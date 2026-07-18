@@ -793,7 +793,7 @@ elif page == "Compare Startups":
     st.title("⚔️ Compare Startups")
 
     master = pd.read_csv(
-        "outputs/master_startup_database_standardized.csv"
+        "Outputs/master_startup_database_standardized.csv"
     )
 
     startup_1 = st.text_input(
@@ -860,7 +860,7 @@ elif page == "Leaderboards":
     st.title("🏆 Startup Leaderboards")
 
     master = pd.read_csv(
-        "outputs/master_startup_database_standardized.csv"
+        "Outputs/master_startup_database_standardized.csv"
     )
 
     leaderboard_type = st.selectbox(
