@@ -4,6 +4,9 @@ import streamlit as st
 import requests
 import re
 from bs4 import BeautifulSoup
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
 
 # =========================
 # LOAD MODEL + DATA
@@ -638,7 +641,13 @@ elif page == "Startup Database":
 
     st.title("🗂 Startup Database")
 
-    master = pd.read_csv("outputs/final_startup_graph.csv")
+    DATABASE_FILE = BASE_DIR / "Outputs" / "final_startup_graph.csv"
+
+    if not DATABASE_FILE.exists():
+        st.error(f"Database file not found: {DATABASE_FILE}")
+        st.stop()
+
+    master = pd.read_csv(DATABASE_FILE)
 
     st.write(f"Total startups in database: {len(master):,}")
 
@@ -718,7 +727,7 @@ elif page == "Startup Profile":
 
     st.title("🏢 Startup Profile")
 
-    graph = pd.read_csv("outputs/final_startup_graph.csv")
+    graph = pd.read_csv("Outputs/final_startup_graph.csv")
 
     query = st.text_input("Search startup profile", "Airbnb")
 
