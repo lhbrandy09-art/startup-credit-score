@@ -1,0 +1,50 @@
+[
+    {
+        "name": "Sequoia",
+        "url": "https://sequoiacap.com/our-companies/"
+    },
+    {
+        "name": "Andreessen Horowitz",
+        "url": "https://a16z.com/portfolio/"
+    },
+    {
+        "name": "Accel",
+        "url": "https://www.accel.com/companies"
+    },
+    {
+        "name": "Greylock",
+        "url": "https://greylock.com/portfolio/"
+    },
+    {
+        "name": "General Catalyst",
+        "url": "https://www.generalcatalyst.com/portfolio/"
+    },
+    {
+        "name": "Founders Fund",
+        "url": "https://foundersfund.com/portfolio/"
+    },
+    {
+        "name": "Benchmark",
+        "url": "https://benchmark.com/portfolio/"
+    },
+    {
+        "name": "Bessemer",
+        "url": "https://www.bvp.com/portfolio"
+    },
+    {
+        "name": "Index Ventures",
+        "url": "https://www.indexventures.com/portfolio/"
+    },
+    {
+        "name": "Khosla Ventures",
+        "url": "https://www.khoslaventures.com/portfolio"
+    },
+    {
+        "name": "Kleiner Perkins",
+        "url": "https://www.kleinerperkins.com/portfolio/"
+    },
+    {
+        "name": "NEA",
+        "url": "https://www.nea.com/portfolio"
+    }
+]

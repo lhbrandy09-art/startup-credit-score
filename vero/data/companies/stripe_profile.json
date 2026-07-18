@@ -1,0 +1,803 @@
+{
+  "identity": {
+    "name": "Stripe",
+    "website": "https://stripe.com",
+    "description": "Stripe is a financial services platform that helps all types of businesses accept payments, build flexible billing models, and manage money movement.",
+    "founded_year": null,
+    "headquarters": null,
+    "countries_served": [],
+    "industry": "Financial Technology",
+    "subindustry": null,
+    "stage": null,
+    "legal_name": null,
+    "company_status": null,
+    "accelerator": null,
+    "batch": null,
+    "evidence": [
+      {
+        "claim": "Company description: Stripe is a financial services platform that helps all types of businesses accept payments, build flexible billing models, and manage money movement.",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616746+00:00",
+        "confidence": 0.9,
+        "verified": true,
+        "notes": null
+      },
+      {
+        "claim": "VERO inferred the industry as Financial Technology.",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616765+00:00",
+        "confidence": 0.65,
+        "verified": false,
+        "notes": "Keyword-based website inference."
+      }
+    ]
+  },
+  "founders": [
+    {
+      "name": "Laura Collinson",
+      "role": null,
+      "linkedin_url": null,
+      "previous_companies": [],
+      "education": [],
+      "domain_experience_years": null,
+      "previous_startups": [],
+      "previous_exits": [],
+      "technical_background": null,
+      "founder_market_fit": null,
+      "reputation_notes": null,
+      "evidence": [
+        {
+          "claim": "Leadership name detected: Laura Collinson",
+          "source_url": "https://stripe.com/atlas",
+          "source_name": "Company website",
+          "collected_at": "2026-07-18T03:03:15.616860+00:00",
+          "confidence": 0.5,
+          "verified": false,
+          "notes": "Name detected near leadership terminology; review required."
+        }
+      ]
+    },
+    {
+      "name": "Jobber Read",
+      "role": null,
+      "linkedin_url": null,
+      "previous_companies": [],
+      "education": [],
+      "domain_experience_years": null,
+      "previous_startups": [],
+      "previous_exits": [],
+      "technical_background": null,
+      "founder_market_fit": null,
+      "reputation_notes": null,
+      "evidence": [
+        {
+          "claim": "Leadership name detected: Jobber Read",
+          "source_url": "https://stripe.com/atlas",
+          "source_name": "Company website",
+          "collected_at": "2026-07-18T03:03:15.616870+00:00",
+          "confidence": 0.5,
+          "verified": false,
+          "notes": "Name detected near leadership terminology; review required."
+        }
+      ]
+    },
+    {
+      "name": "Dax Dasilva",
+      "role": null,
+      "linkedin_url": null,
+      "previous_companies": [],
+      "education": [],
+      "domain_experience_years": null,
+      "previous_startups": [],
+      "previous_exits": [],
+      "technical_background": null,
+      "founder_market_fit": null,
+      "reputation_notes": null,
+      "evidence": [
+        {
+          "claim": "Leadership name detected: Dax Dasilva",
+          "source_url": "https://stripe.com/atlas",
+          "source_name": "Company website",
+          "collected_at": "2026-07-18T03:03:15.616876+00:00",
+          "confidence": 0.5,
+          "verified": false,
+          "notes": "Name detected near leadership terminology; review required."
+        }
+      ]
+    },
+    {
+      "name": "Lightspeed Read",
+      "role": null,
+      "linkedin_url": null,
+      "previous_companies": [],
+      "education": [],
+      "domain_experience_years": null,
+      "previous_startups": [],
+      "previous_exits": [],
+      "technical_background": null,
+      "founder_market_fit": null,
+      "reputation_notes": null,
+      "evidence": [
+        {
+          "claim": "Leadership name detected: Lightspeed Read",
+          "source_url": "https://stripe.com/atlas",
+          "source_name": "Company website",
+          "collected_at": "2026-07-18T03:03:15.616881+00:00",
+          "confidence": 0.5,
+          "verified": false,
+          "notes": "Name detected near leadership terminology; review required."
+        }
+      ]
+    },
+    {
+      "name": "Pricing Atlas Authorization",
+      "role": null,
+      "linkedin_url": null,
+      "previous_companies": [],
+      "education": [],
+      "domain_experience_years": null,
+      "previous_startups": [],
+      "previous_exits": [],
+      "technical_background": null,
+      "founder_market_fit": null,
+      "reputation_notes": null,
+      "evidence": [
+        {
+          "claim": "Leadership name detected: Pricing Atlas Authorization",
+          "source_url": "https://stripe.com/atlas",
+          "source_name": "Company website",
+          "collected_at": "2026-07-18T03:03:15.616885+00:00",
+          "confidence": 0.5,
+          "verified": false,
+          "notes": "Name detected near leadership terminology; review required."
+        }
+      ]
+    },
+    {
+      "name": "Boost Billing Capital",
+      "role": null,
+      "linkedin_url": null,
+      "previous_companies": [],
+      "education": [],
+      "domain_experience_years": null,
+      "previous_startups": [],
+      "previous_exits": [],
+      "technical_background": null,
+      "founder_market_fit": null,
+      "reputation_notes": null,
+      "evidence": [
+        {
+          "claim": "Leadership name detected: Boost Billing Capital",
+          "source_url": "https://stripe.com/atlas",
+          "source_name": "Company website",
+          "collected_at": "2026-07-18T03:03:15.616890+00:00",
+          "confidence": 0.5,
+          "verified": false,
+          "notes": "Name detected near leadership terminology; review required."
+        }
+      ]
+    },
+    {
+      "name": "Checkout Climate Connect",
+      "role": null,
+      "linkedin_url": null,
+      "previous_companies": [],
+      "education": [],
+      "domain_experience_years": null,
+      "previous_startups": [],
+      "previous_exits": [],
+      "technical_background": null,
+      "founder_market_fit": null,
+      "reputation_notes": null,
+      "evidence": [
+        {
+          "claim": "Leadership name detected: Checkout Climate Connect",
+          "source_url": "https://stripe.com/atlas",
+          "source_name": "Company website",
+          "collected_at": "2026-07-18T03:03:15.616894+00:00",
+          "confidence": 0.5,
+          "verified": false,
+          "notes": "Name detected near leadership terminology; review required."
+        }
+      ]
+    },
+    {
+      "name": "Crypto Crypto Onramp",
+      "role": null,
+      "linkedin_url": null,
+      "previous_companies": [],
+      "education": [],
+      "domain_experience_years": null,
+      "previous_startups": [],
+      "previous_exits": [],
+      "technical_background": null,
+      "founder_market_fit": null,
+      "reputation_notes": null,
+      "evidence": [
+        {
+          "claim": "Leadership name detected: Crypto Crypto Onramp",
+          "source_url": "https://stripe.com/atlas",
+          "source_name": "Company website",
+          "collected_at": "2026-07-18T03:03:15.616899+00:00",
+          "confidence": 0.5,
+          "verified": false,
+          "notes": "Name detected near leadership terminology; review required."
+        }
+      ]
+    },
+    {
+      "name": "Data Pipeline Elements",
+      "role": null,
+      "linkedin_url": null,
+      "previous_companies": [],
+      "education": [],
+      "domain_experience_years": null,
+      "previous_startups": [],
+      "previous_exits": [],
+      "technical_background": null,
+      "founder_market_fit": null,
+      "reputation_notes": null,
+      "evidence": [
+        {
+          "claim": "Leadership name detected: Data Pipeline Elements",
+          "source_url": "https://stripe.com/atlas",
+          "source_name": "Company website",
+          "collected_at": "2026-07-18T03:03:15.616903+00:00",
+          "confidence": 0.5,
+          "verified": false,
+          "notes": "Name detected near leadership terminology; review required."
+        }
+      ]
+    },
+    {
+      "name": "Financial Connections Global",
+      "role": null,
+      "linkedin_url": null,
+      "previous_companies": [],
+      "education": [],
+      "domain_experience_years": null,
+      "previous_startups": [],
+      "previous_exits": [],
+      "technical_background": null,
+      "founder_market_fit": null,
+      "reputation_notes": null,
+      "evidence": [
+        {
+          "claim": "Leadership name detected: Financial Connections Global",
+          "source_url": "https://stripe.com/atlas",
+          "source_name": "Company website",
+          "collected_at": "2026-07-18T03:03:15.616907+00:00",
+          "confidence": 0.5,
+          "verified": false,
+          "notes": "Name detected near leadership terminology; review required."
+        }
+      ]
+    },
+    {
+      "name": "Payouts Identity Invoicing",
+      "role": null,
+      "linkedin_url": null,
+      "previous_companies": [],
+      "education": [],
+      "domain_experience_years": null,
+      "previous_startups": [],
+      "previous_exits": [],
+      "technical_background": null,
+      "founder_market_fit": null,
+      "reputation_notes": null,
+      "evidence": [
+        {
+          "claim": "Leadership name detected: Payouts Identity Invoicing",
+          "source_url": "https://stripe.com/atlas",
+          "source_name": "Company website",
+          "collected_at": "2026-07-18T03:03:15.616911+00:00",
+          "confidence": 0.5,
+          "verified": false,
+          "notes": "Name detected near leadership terminology; review required."
+        }
+      ]
+    },
+    {
+      "name": "Issuing Link Managed",
+      "role": null,
+      "linkedin_url": null,
+      "previous_companies": [],
+      "education": [],
+      "domain_experience_years": null,
+      "previous_startups": [],
+      "previous_exits": [],
+      "technical_background": null,
+      "founder_market_fit": null,
+      "reputation_notes": null,
+      "evidence": [
+        {
+          "claim": "Leadership name detected: Issuing Link Managed",
+          "source_url": "https://stripe.com/atlas",
+          "source_name": "Company website",
+          "collected_at": "2026-07-18T03:03:15.616916+00:00",
+          "confidence": 0.5,
+          "verified": false,
+          "notes": "Name detected near leadership terminology; review required."
+        }
+      ]
+    }
+  ],
+  "team": {
+    "employee_count": null,
+    "employee_growth_rate": null,
+    "hiring_status": null,
+    "key_roles_open": [],
+    "technical_team_strength": null,
+    "sales_team_strength": null,
+    "team_completeness": null,
+    "key_person_risk": null,
+    "evidence": []
+  },
+  "problem": {
+    "summary": null,
+    "target_user": null,
+    "severity": null,
+    "frequency": null,
+    "urgency": null,
+    "cost_of_inaction": null,
+    "current_alternatives": [],
+    "willingness_to_pay": null,
+    "evidence": []
+  },
+  "solution": {
+    "summary": "Stripe is a financial services platform that helps all types of businesses accept payments, build flexible billing models, and manage money movement.",
+    "primary_value_proposition": "Stripe is a financial services platform that helps all types of businesses accept payments, build flexible billing models, and manage money movement.",
+    "differentiation": null,
+    "technical_complexity": null,
+    "scalability": null,
+    "time_to_value": null,
+    "implementation_friction": null,
+    "evidence": [
+      {
+        "claim": "Company description: Stripe is a financial services platform that helps all types of businesses accept payments, build flexible billing models, and manage money movement.",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616746+00:00",
+        "confidence": 0.9,
+        "verified": true,
+        "notes": null
+      }
+    ]
+  },
+  "customers": {
+    "customer_type": "Developers, Enterprises, Startups, Retailers, Financial institutions",
+    "buyer": null,
+    "end_user": null,
+    "industries_served": [
+      "Retail",
+      "Healthcare",
+      "Financial Services",
+      "Education",
+      "Software",
+      "Technology",
+      "Media",
+      "Travel",
+      "Hospitality",
+      "Insurance",
+      "Government",
+      "Nonprofit",
+      "E-Commerce"
+    ],
+    "customer_size": null,
+    "geography": [],
+    "sales_motion": null,
+    "customer_concentration_risk": null,
+    "evidence": [
+      {
+        "claim": "Likely customer type: Developers",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616828+00:00",
+        "confidence": 0.6,
+        "verified": false,
+        "notes": "Keyword-based website inference."
+      },
+      {
+        "claim": "Likely customer type: Enterprises",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616831+00:00",
+        "confidence": 0.6,
+        "verified": false,
+        "notes": "Keyword-based website inference."
+      },
+      {
+        "claim": "Likely customer type: Startups",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616835+00:00",
+        "confidence": 0.6,
+        "verified": false,
+        "notes": "Keyword-based website inference."
+      },
+      {
+        "claim": "Likely customer type: Retailers",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616838+00:00",
+        "confidence": 0.6,
+        "verified": false,
+        "notes": "Keyword-based website inference."
+      },
+      {
+        "claim": "Likely customer type: Financial institutions",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616841+00:00",
+        "confidence": 0.6,
+        "verified": false,
+        "notes": "Keyword-based website inference."
+      }
+    ]
+  },
+  "product": {
+    "product_name": "Flexible solutions for every business model.",
+    "product_type": "Flexible solutions for every business model., Accept and optimize payments globally—online and in person, Enable any billing model, Embed payments in your platform, Transform your enterprise with agile financial infrastructure",
+    "maturity": null,
+    "launch_date": null,
+    "usability_notes": null,
+    "reliability_notes": null,
+    "integrations": [
+      "Integration options",
+      "App integrations"
+    ],
+    "dependencies": [],
+    "roadmap_signals": [],
+    "evidence": [
+      {
+        "claim": "Product or solution identified: Flexible solutions for every business model.",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616772+00:00",
+        "confidence": 0.65,
+        "verified": false,
+        "notes": "Extracted from website headings."
+      },
+      {
+        "claim": "Product or solution identified: Accept and optimize payments globally—online and in person",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616778+00:00",
+        "confidence": 0.65,
+        "verified": false,
+        "notes": "Extracted from website headings."
+      },
+      {
+        "claim": "Product or solution identified: Enable any billing model",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616782+00:00",
+        "confidence": 0.65,
+        "verified": false,
+        "notes": "Extracted from website headings."
+      },
+      {
+        "claim": "Product or solution identified: Embed payments in your platform",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616786+00:00",
+        "confidence": 0.65,
+        "verified": false,
+        "notes": "Extracted from website headings."
+      },
+      {
+        "claim": "Product or solution identified: Transform your enterprise with agile financial infrastructure",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616789+00:00",
+        "confidence": 0.65,
+        "verified": false,
+        "notes": "Extracted from website headings."
+      },
+      {
+        "claim": "Product or solution identified: Le Monde improves local and international payments with Stripe.",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616793+00:00",
+        "confidence": 0.65,
+        "verified": false,
+        "notes": "Extracted from website headings."
+      },
+      {
+        "claim": "Product or solution identified: Make your SaaS platform a complete financial operating system",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616797+00:00",
+        "confidence": 0.65,
+        "verified": false,
+        "notes": "Extracted from website headings."
+      },
+      {
+        "claim": "Product or solution identified: Reliable, extensible infrastructure for every stack.",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616800+00:00",
+        "confidence": 0.65,
+        "verified": false,
+        "notes": "Extracted from website headings."
+      },
+      {
+        "claim": "Product or solution identified: Connect to existing systems.",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616804+00:00",
+        "confidence": 0.65,
+        "verified": false,
+        "notes": "Extracted from website headings."
+      },
+      {
+        "claim": "Product or solution identified: New tools to process payments outside app stores.",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616807+00:00",
+        "confidence": 0.65,
+        "verified": false,
+        "notes": "Extracted from website headings."
+      },
+      {
+        "claim": "Product or solution identified: Crypto.com partners with Stripe to enable better crypto payments.",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616811+00:00",
+        "confidence": 0.65,
+        "verified": false,
+        "notes": "Extracted from website headings."
+      },
+      {
+        "claim": "Product or solution identified: Make your products shoppable through AI platforms.",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616814+00:00",
+        "confidence": 0.65,
+        "verified": false,
+        "notes": "Extracted from website headings."
+      },
+      {
+        "claim": "Product or solution identified: Payments",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616817+00:00",
+        "confidence": 0.65,
+        "verified": false,
+        "notes": "Extracted from website headings."
+      },
+      {
+        "claim": "Product or solution identified: Money Management",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616821+00:00",
+        "confidence": 0.65,
+        "verified": false,
+        "notes": "Extracted from website headings."
+      },
+      {
+        "claim": "Product or solution identified: Platforms and marketplaces",
+        "source_url": "https://stripe.com",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616824+00:00",
+        "confidence": 0.65,
+        "verified": false,
+        "notes": "Extracted from website headings."
+      }
+    ]
+  },
+  "business_model": {
+    "model_type": "Subscription, Enterprise contract, Usage-based, Transaction fee",
+    "revenue_streams": [],
+    "pricing_model": "Subscription, Enterprise contract, Usage-based, Transaction fee",
+    "recurring_revenue": null,
+    "gross_margin": null,
+    "monetization_strength": null,
+    "expansion_revenue": null,
+    "evidence": [
+      {
+        "claim": "Pricing signal detected: Subscription",
+        "source_url": "https://stripe.com/pricing",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616845+00:00",
+        "confidence": 0.6,
+        "verified": false,
+        "notes": null
+      },
+      {
+        "claim": "Pricing signal detected: Enterprise contract",
+        "source_url": "https://stripe.com/pricing",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616849+00:00",
+        "confidence": 0.6,
+        "verified": false,
+        "notes": null
+      },
+      {
+        "claim": "Pricing signal detected: Usage-based",
+        "source_url": "https://stripe.com/pricing",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616853+00:00",
+        "confidence": 0.6,
+        "verified": false,
+        "notes": null
+      },
+      {
+        "claim": "Pricing signal detected: Transaction fee",
+        "source_url": "https://stripe.com/pricing",
+        "source_name": "Company website",
+        "collected_at": "2026-07-18T03:03:15.616856+00:00",
+        "confidence": 0.6,
+        "verified": false,
+        "notes": null
+      }
+    ]
+  },
+  "traction": {
+    "users": null,
+    "customers": null,
+    "monthly_active_users": null,
+    "annual_revenue": null,
+    "monthly_recurring_revenue": null,
+    "annual_recurring_revenue": null,
+    "revenue_growth_rate": null,
+    "user_growth_rate": null,
+    "retention_rate": null,
+    "churn_rate": null,
+    "major_customers": [],
+    "partnerships": [],
+    "waitlist_size": null,
+    "evidence": []
+  },
+  "market": {
+    "market_name": null,
+    "tam": null,
+    "sam": null,
+    "som": null,
+    "growth_rate": null,
+    "market_stage": null,
+    "demand_trend": null,
+    "timing": null,
+    "regulation_notes": null,
+    "geographic_opportunity": [],
+    "market_drivers": [],
+    "market_headwinds": [],
+    "evidence": []
+  },
+  "competition": {
+    "direct_competitors": [],
+    "indirect_competitors": [],
+    "substitutes": [],
+    "intensity": null,
+    "saturation": null,
+    "pricing_pressure": null,
+    "competitive_position": null,
+    "evidence": []
+  },
+  "moat": {
+    "network_effects": null,
+    "switching_costs": null,
+    "proprietary_data": null,
+    "proprietary_technology": null,
+    "brand_strength": null,
+    "distribution_advantage": null,
+    "intellectual_property": [],
+    "regulatory_advantage": null,
+    "community_strength": null,
+    "overall_strength": null,
+    "evidence": []
+  },
+  "financials": {
+    "total_funding": null,
+    "last_round_amount": null,
+    "last_round_date": null,
+    "valuation": null,
+    "burn_rate_monthly": null,
+    "runway_months": null,
+    "cash_balance": null,
+    "cac": null,
+    "ltv": null,
+    "cac_payback_months": null,
+    "capital_efficiency": null,
+    "profitability_status": null,
+    "debt": null,
+    "evidence": []
+  },
+  "risks": [],
+  "opportunities": [],
+  "external_environment": {
+    "industry_momentum": null,
+    "funding_climate": null,
+    "regulatory_climate": null,
+    "customer_demand_trend": null,
+    "technology_trend": null,
+    "macro_sensitivity": null,
+    "recent_events": [
+      {
+        "type": "website_metadata",
+        "social_links": {
+          "GitHub": "https://github.com/stripe",
+          "YouTube": "https://www.youtube.com/watch?v=eMSqlQMk480",
+          "LinkedIn": "https://www.linkedin.com/search/results/people/?facetCurrentCompany=%5B%222135371%22%5D"
+        },
+        "careers_url": "https://stripe.com/jobs",
+        "pricing_url": "https://stripe.com/pricing",
+        "about_url": "https://stripe.com/atlas",
+        "source_pages": [
+          "https://stripe.com",
+          "https://stripe.com/",
+          "https://stripe.com/payments",
+          "https://stripe.com/pricing",
+          "https://stripe.com/customers",
+          "https://stripe.com/jobs",
+          "https://stripe.com/customers/amazon",
+          "https://stripe.com/customers/shopify",
+          "https://stripe.com/customers/mindbody",
+          "https://stripe.com/customers/ramp"
+        ]
+      }
+    ],
+    "evidence": []
+  },
+  "historical_model": {
+    "success_probability": null,
+    "model_version": null,
+    "prediction_date": null,
+    "similar_companies": [],
+    "important_features": []
+  },
+  "scores": {
+    "company_quality": null,
+    "team": null,
+    "problem": null,
+    "product": null,
+    "traction": null,
+    "market_opportunity": null,
+    "competitive_strength": null,
+    "moat": null,
+    "financial_health": null,
+    "execution_potential": null,
+    "external_environment": null,
+    "risk": null,
+    "overall_investment_score": null
+  },
+  "ai_analysis": {
+    "executive_summary": null,
+    "investment_thesis": null,
+    "bull_case": null,
+    "bear_case": null,
+    "pros": [],
+    "cons": [],
+    "questions_to_ask": [],
+    "missing_information": [
+      "Verified founder biographies",
+      "Revenue and growth",
+      "Customer retention",
+      "Funding history",
+      "Market size",
+      "Named competitors",
+      "Unit economics"
+    ],
+    "conclusion": null
+  },
+  "evidence": [
+    {
+      "claim": "VERO researched 10 public website pages.",
+      "source_url": "https://stripe.com",
+      "source_name": "Company website",
+      "collected_at": "2026-07-18T03:03:15.616976+00:00",
+      "confidence": 1.0,
+      "verified": true,
+      "notes": null
+    }
+  ],
+  "data_quality": {
+    "completeness": 0.6357,
+    "confidence": 0.0,
+    "known_field_count": 335,
+    "total_field_count": 527,
+    "last_updated": "2026-07-18T03:03:15.617533+00:00"
+  }
+}

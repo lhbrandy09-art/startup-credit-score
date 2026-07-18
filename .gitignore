@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Generated output
+Outputs/
+
+# Large zip archives
+*.zip
+
+# Environment variables
+.env
+
+# Model checkpoints (if large)
+*.pkl
+
+# Logs
+*.log

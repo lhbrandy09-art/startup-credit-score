@@ -1,0 +1,67 @@
+{
+  "title": "VERO Company Profile",
+  "type": "object",
+  "required": [
+    "company",
+    "problem",
+    "solution",
+    "market",
+    "competition",
+    "risks",
+    "opportunities",
+    "data_quality"
+  ],
+  "properties": {
+    "company": {
+      "type": "object"
+    },
+    "founders": {
+      "type": "array"
+    },
+    "problem": {
+      "type": "object"
+    },
+    "solution": {
+      "type": "object"
+    },
+    "customers": {
+      "type": "object"
+    },
+    "business_model": {
+      "type": "object"
+    },
+    "product": {
+      "type": "object"
+    },
+    "traction": {
+      "type": "object"
+    },
+    "market": {
+      "type": "object"
+    },
+    "competition": {
+      "type": "object"
+    },
+    "moat": {
+      "type": "object"
+    },
+    "risks": {
+      "type": "array"
+    },
+    "opportunities": {
+      "type": "array"
+    },
+    "unknowns": {
+      "type": "array"
+    },
+    "evidence": {
+      "type": "array"
+    },
+    "historical_model": {
+      "type": "object"
+    },
+    "data_quality": {
+      "type": "object"
+    }
+  }
+}
