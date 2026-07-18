@@ -16,7 +16,9 @@ env/
 Thumbs.db
 
 # Generated output
-Outputs/
+Outputs/*
+!Outputs/startup_credit_score_model.pkl
+!Outputs/yc_github_metrics.csv
 
 # Large zip archives
 *.zip

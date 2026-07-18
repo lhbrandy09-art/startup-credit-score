@@ -9,8 +9,8 @@ from bs4 import BeautifulSoup
 # LOAD MODEL + DATA
 # =========================
 
-model = joblib.load("outputs/startup_credit_score_model.pkl")
-yc_data = pd.read_csv("outputs/yc_github_metrics.csv")
+model = joblib.load("Outputs/startup_credit_score_model.pkl")
+yc_data = pd.read_csv("Outputs/yc_github_metrics.csv")
 
 # =========================
 # PAGE CONFIG
