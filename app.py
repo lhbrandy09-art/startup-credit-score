@@ -127,10 +127,193 @@ THEMES = {
         "sidebar": "#35121B",
         "sidebar_text": "#FFF9F7",
     },
+    "Ocean": {
+        "primary": "#0077B6",
+        "secondary": "#48CAE4",
+        "background": "#F1FAFF",
+        "surface": "#FFFFFF",
+        "surface_alt": "#DFF4FC",
+        "text": "#08263A",
+        "muted": "#607D8B",
+        "border": "#CBE7F2",
+        "positive": "#129970",
+        "warning": "#D9911B",
+        "danger": "#D84D4D",
+        "sidebar": "#06283D",
+        "sidebar_text": "#F4FBFF",
+    },
+    "Sunset": {
+        "primary": "#F26B38",
+        "secondary": "#F6B73C",
+        "background": "#FFF7F1",
+        "surface": "#FFFFFF",
+        "surface_alt": "#FFE8D8",
+        "text": "#352018",
+        "muted": "#806A61",
+        "border": "#F1D8C8",
+        "positive": "#2A9D6F",
+        "warning": "#E39A18",
+        "danger": "#D94A4A",
+        "sidebar": "#3A1F18",
+        "sidebar_text": "#FFF8F4",
+    },
+    "Lavender": {
+        "primary": "#7C5CE7",
+        "secondary": "#C084FC",
+        "background": "#F7F4FF",
+        "surface": "#FFFFFF",
+        "surface_alt": "#EFE9FF",
+        "text": "#251C3D",
+        "muted": "#756B8C",
+        "border": "#DFD6F5",
+        "positive": "#2F9E72",
+        "warning": "#C78A17",
+        "danger": "#D45267",
+        "sidebar": "#261A46",
+        "sidebar_text": "#FBF8FF",
+    },
+    "Rose": {
+        "primary": "#D9467B",
+        "secondary": "#F59AB7",
+        "background": "#FFF5F8",
+        "surface": "#FFFFFF",
+        "surface_alt": "#FFE5EE",
+        "text": "#351A25",
+        "muted": "#846B74",
+        "border": "#F0D1DC",
+        "positive": "#21926A",
+        "warning": "#C68A1A",
+        "danger": "#C93D52",
+        "sidebar": "#3A1422",
+        "sidebar_text": "#FFF8FB",
+    },
+    "Copper": {
+        "primary": "#B7652A",
+        "secondary": "#D99A5D",
+        "background": "#FAF5EF",
+        "surface": "#FFFDFC",
+        "surface_alt": "#F1E4D5",
+        "text": "#2E2118",
+        "muted": "#77695E",
+        "border": "#E5D7C7",
+        "positive": "#2D8661",
+        "warning": "#B98221",
+        "danger": "#C84D48",
+        "sidebar": "#2E1B12",
+        "sidebar_text": "#FFF9F3",
+    },
+    "Arctic": {
+        "primary": "#2C7BE5",
+        "secondary": "#8ED7F7",
+        "background": "#F6FBFF",
+        "surface": "#FFFFFF",
+        "surface_alt": "#EAF5FC",
+        "text": "#12263A",
+        "muted": "#6E8091",
+        "border": "#D7E8F3",
+        "positive": "#1F9A72",
+        "warning": "#C98C1C",
+        "danger": "#D64B57",
+        "sidebar": "#0B2035",
+        "sidebar_text": "#F4FAFF",
+    },
+    "Solar": {
+        "primary": "#E6A700",
+        "secondary": "#FFCC33",
+        "background": "#FFFBEF",
+        "surface": "#FFFFFF",
+        "surface_alt": "#FFF3C7",
+        "text": "#2B2411",
+        "muted": "#786F55",
+        "border": "#E9DCA7",
+        "positive": "#24845F",
+        "warning": "#D38A00",
+        "danger": "#D24C42",
+        "sidebar": "#2D250E",
+        "sidebar_text": "#FFFDF5",
+    },
+    "Crimson": {
+        "primary": "#C62828",
+        "secondary": "#EF5350",
+        "background": "#FFF5F5",
+        "surface": "#FFFFFF",
+        "surface_alt": "#FDE6E6",
+        "text": "#321A1A",
+        "muted": "#816A6A",
+        "border": "#EED0D0",
+        "positive": "#24845F",
+        "warning": "#C58B1A",
+        "danger": "#B71C1C",
+        "sidebar": "#330F12",
+        "sidebar_text": "#FFF8F8",
+    },
+    "Teal": {
+        "primary": "#0F8B8D",
+        "secondary": "#49C5B6",
+        "background": "#F1FAF9",
+        "surface": "#FFFFFF",
+        "surface_alt": "#DFF3F1",
+        "text": "#123332",
+        "muted": "#647B79",
+        "border": "#CDE6E3",
+        "positive": "#1D956B",
+        "warning": "#C58A1C",
+        "danger": "#D34B55",
+        "sidebar": "#0A3435",
+        "sidebar_text": "#F3FFFD",
+    },
+    "Sakura": {
+        "primary": "#E76F9A",
+        "secondary": "#F6B8CE",
+        "background": "#FFF8FB",
+        "surface": "#FFFFFF",
+        "surface_alt": "#FDEAF1",
+        "text": "#35202A",
+        "muted": "#836E77",
+        "border": "#EFD7E0",
+        "positive": "#2A8D68",
+        "warning": "#C58A1C",
+        "danger": "#C84763",
+        "sidebar": "#43202E",
+        "sidebar_text": "#FFF9FC",
+    },
+    "Obsidian Gold": {
+        "primary": "#E0B84F",
+        "secondary": "#F2D781",
+        "background": "#0D0D0E",
+        "surface": "#171719",
+        "surface_alt": "#222225",
+        "text": "#FAF8F1",
+        "muted": "#B8B3A5",
+        "border": "#343438",
+        "positive": "#45C58A",
+        "warning": "#E0B84F",
+        "danger": "#FF7373",
+        "sidebar": "#080809",
+        "sidebar_text": "#FFF9E8",
+    },
+    "Cyber Lime": {
+        "primary": "#B7F34A",
+        "secondary": "#43E6C2",
+        "background": "#090D0A",
+        "surface": "#131915",
+        "surface_alt": "#1A231D",
+        "text": "#F4FFE8",
+        "muted": "#AAB8A3",
+        "border": "#2D3A31",
+        "positive": "#62E6A7",
+        "warning": "#F0C95A",
+        "danger": "#FF6B7A",
+        "sidebar": "#050805",
+        "sidebar_text": "#F6FFE9",
+    },
+
 }
 
 if "theme_name" not in st.session_state:
     st.session_state.theme_name = "Executive"
+if "page" not in st.session_state:
+    st.session_state.page = "Overview"
 
 
 def inject_css(theme: dict[str, str]) -> None:
@@ -359,6 +542,11 @@ def inject_css(theme: dict[str, str]) -> None:
             color: white;
         }}
 
+        div.stButton > button *,
+        div.stDownloadButton > button * {{
+            color: #FFFFFF !important;
+        }}
+
         [data-testid="stTextInput"] input,
         [data-testid="stTextArea"] textarea,
         [data-testid="stNumberInput"] input,
@@ -367,6 +555,48 @@ def inject_css(theme: dict[str, str]) -> None:
             border-color: var(--vero-border) !important;
             background: var(--vero-surface) !important;
             color: var(--vero-text) !important;
+        }}
+
+
+        /* Keep select boxes readable in every theme */
+        [data-baseweb="select"] > div {{
+            background: var(--vero-surface) !important;
+            color: var(--vero-text) !important;
+        }}
+
+        [data-baseweb="select"] input,
+        [data-baseweb="select"] span,
+        [data-baseweb="select"] svg {{
+            color: var(--vero-text) !important;
+            fill: var(--vero-text) !important;
+        }}
+
+        [role="listbox"] {{
+            background: var(--vero-surface) !important;
+            border: 1px solid var(--vero-border) !important;
+        }}
+
+        [role="option"] {{
+            background: var(--vero-surface) !important;
+            color: var(--vero-text) !important;
+        }}
+
+        [role="option"]:hover,
+        [aria-selected="true"][role="option"] {{
+            background: var(--vero-surface-alt) !important;
+            color: var(--vero-text) !important;
+        }}
+
+        [data-testid="stSidebar"] [data-baseweb="select"] > div {{
+            background: #FFFFFF !important;
+            color: #111827 !important;
+        }}
+
+        [data-testid="stSidebar"] [data-baseweb="select"] span,
+        [data-testid="stSidebar"] [data-baseweb="select"] input,
+        [data-testid="stSidebar"] [data-baseweb="select"] svg {{
+            color: #111827 !important;
+            fill: #111827 !important;
         }}
 
         [data-testid="stDataFrame"] {{
@@ -403,6 +633,60 @@ def safe_number(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def clean_text(value: Any, fallback: str = "") -> str:
+    """Return readable text without exposing pandas NaN values."""
+    if value is None:
+        return fallback
+    try:
+        if pd.isna(value):
+            return fallback
+    except (TypeError, ValueError):
+        pass
+    cleaned = str(value).strip()
+    if not cleaned or cleaned.lower() in {"nan", "none", "null", "n/a", "unknown"}:
+        return fallback
+    return cleaned
+
+
+def first_present(row: pd.Series, columns: list[str], fallback: Any = "") -> Any:
+    """Return the first non-empty value found across possible column aliases."""
+    for column in columns:
+        if column in row.index:
+            value = row.get(column)
+            if clean_text(value):
+                return value
+            if isinstance(value, (int, float)) and not pd.isna(value):
+                return value
+    return fallback
+
+
+def first_number(row: pd.Series, columns: list[str], default: float = 0.0) -> float:
+    """Return the first valid numeric value across possible column aliases."""
+    for column in columns:
+        if column not in row.index:
+            continue
+        value = safe_number(row.get(column), default=float("nan"))
+        if not pd.isna(value):
+            return value
+    return default
+
+
+def valid_company_name(value: Any) -> bool:
+    """Reject IDs, descriptions, and missing values that sometimes leak into name fields."""
+    name = clean_text(value)
+    if not name or len(name) > 64:
+        return False
+    if name.replace(".", "").replace("-", "").isdigit():
+        return False
+    words = name.split()
+    if len(words) > 8:
+        return False
+    sentence_markers = (" is a ", " helps ", " provides ", " platform for ", " company that ")
+    if any(marker in name.lower() for marker in sentence_markers):
+        return False
+    return any(character.isalpha() for character in name)
 
 
 def page_header(eyebrow: str, title: str, copy: str) -> None:
@@ -642,6 +926,7 @@ with st.sidebar:
             "About",
             "Settings",
         ],
+        key="page",
         label_visibility="collapsed",
     )
 
@@ -689,12 +974,14 @@ def render_overview() -> None:
         col_a, col_b = st.columns(2)
         with col_a:
             if st.button("Analyze startup", use_container_width=True):
-                st.session_state["overview_company"] = company
-                st.info("Open **Analyze Startup** from the sidebar to score it.")
+                st.session_state["overview_company"] = company or "Example Startup"
+                st.session_state.page = "Analyze Startup"
+                st.rerun()
         with col_b:
             if st.button("Open profile search", use_container_width=True):
                 st.session_state["profile_query"] = company or "Airbnb"
-                st.info("Open **Startup Profile** from the sidebar to view matches.")
+                st.session_state.page = "Startup Profile"
+                st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
     with right:
@@ -711,14 +998,78 @@ def render_overview() -> None:
             unsafe_allow_html=True,
         )
 
-    if not graph.empty and "signal_score" in graph.columns and "name" in graph.columns:
+    if not graph.empty:
         section_header("Strongest current signals", "A quick view of highly ranked companies in the graph database.")
-        top = graph.sort_values("signal_score", ascending=False).head(8).copy()
-        cols = st.columns(4)
-        for index, (_, row) in enumerate(top.iterrows()):
-            with cols[index % 4]:
-                industry = row.get("industry", row.get("industry_clean", "Unknown"))
-                kpi_card(str(row.get("name", "Unknown")), f"{safe_number(row.get('signal_score')):.0f}", str(industry))
+
+        name_columns = ["name", "company_name", "startup_name", "organization_name"]
+        score_columns = ["signal_score", "vero_score", "score", "startup_score"]
+        description_columns = ["description_clean", "description", "short_description", "tagline"]
+        industry_columns = ["industry", "industry_clean", "category", "sector"]
+
+        cards: list[dict[str, Any]] = []
+        seen_names: set[str] = set()
+
+        sortable = graph.copy()
+        score_column = next((column for column in score_columns if column in sortable.columns), None)
+        if score_column:
+            sortable["_display_score"] = pd.to_numeric(sortable[score_column], errors="coerce").fillna(0)
+            sortable = sortable.sort_values("_display_score", ascending=False)
+
+        for _, row in sortable.iterrows():
+            name = clean_text(first_present(row, name_columns))
+            if not valid_company_name(name):
+                continue
+            normalized_name = name.lower()
+            if normalized_name in seen_names:
+                continue
+
+            score = first_number(row, score_columns, 0)
+            industry = clean_text(first_present(row, industry_columns), "Industry unavailable")
+            description = clean_text(
+                first_present(row, description_columns),
+                f"{name} is included in VERO's startup intelligence database."
+            )
+            if len(description) > 135:
+                description = description[:132].rstrip() + "..."
+
+            cards.append({
+                "name": name,
+                "score": score,
+                "industry": industry,
+                "description": description,
+            })
+            seen_names.add(normalized_name)
+            if len(cards) == 8:
+                break
+
+        if cards:
+            cols = st.columns(4)
+            for index, card in enumerate(cards):
+                with cols[index % 4]:
+                    initials = "".join(word[0] for word in card["name"].split()[:2]).upper()
+                    st.markdown(
+                        f"""
+                        <div class="vero-card">
+                            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.8rem;">
+                                <div style="width:42px;height:42px;border-radius:12px;background:var(--vero-surface-alt);display:flex;align-items:center;justify-content:center;font-weight:850;color:var(--vero-primary);">
+                                    {safe_html(initials)}
+                                </div>
+                                <div>
+                                    <div style="font-weight:850;font-size:1rem;">{safe_html(card["name"])}</div>
+                                    <span class="vero-badge">{safe_html(card["industry"])}</span>
+                                </div>
+                            </div>
+                            <div class="vero-kpi-sub" style="min-height:58px;line-height:1.5;">{safe_html(card["description"])}</div>
+                            <div style="display:flex;justify-content:space-between;align-items:end;margin-top:1rem;">
+                                <span class="vero-kpi-sub">Signal score</span>
+                                <strong style="font-size:1.7rem;">{card["score"]:.0f}</strong>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+        else:
+            st.info("No clean company records were available for this section.")
 
 
 def apply_yc_match(match: pd.Series) -> None:
@@ -930,18 +1281,42 @@ def render_analyze() -> None:
 
 
 def fuzzy_match(data: pd.DataFrame, name: str) -> pd.Series | None:
-    if data.empty or "name" not in data.columns or not name.strip():
+    if data.empty or not name.strip():
         return None
-    names = data["name"].astype(str)
-    exact = data[names.str.lower().str.strip() == name.lower().strip()]
-    if not exact.empty:
-        return exact.iloc[0]
-    partial = data[names.str.lower().str.contains(re.escape(name.lower().strip()), na=False)]
-    return partial.iloc[0] if not partial.empty else None
+
+    name_column = next(
+        (column for column in ["name", "company_name", "startup_name", "organization_name"] if column in data.columns),
+        None,
+    )
+    if name_column is None:
+        return None
+
+    names = data[name_column].fillna("").astype(str).str.strip()
+    target = name.lower().strip()
+
+    exact = data[names.str.lower() == target]
+    candidates = exact if not exact.empty else data[names.str.lower().str.contains(re.escape(target), na=False)]
+    if candidates.empty:
+        return None
+
+    # Prefer the matching record containing the most usable traction information.
+    metric_aliases = [
+        "signal_score", "vero_score", "score",
+        "ph_votes", "product_hunt_votes", "votes_count",
+        "github_total_stars", "github_stars", "stars",
+        "github_followers", "followers",
+    ]
+    ranked = candidates.copy()
+    ranked["_record_quality"] = 0.0
+    for column in metric_aliases:
+        if column in ranked.columns:
+            ranked["_record_quality"] += pd.to_numeric(ranked[column], errors="coerce").fillna(0).gt(0).astype(float)
+    return ranked.sort_values("_record_quality", ascending=False).iloc[0]
 
 
-def company_signal(row: pd.Series, column: str) -> float:
-    return max(0.0, safe_number(row.get(column, 0)))
+def company_signal(row: pd.Series, columns: str | list[str]) -> float:
+    aliases = [columns] if isinstance(columns, str) else columns
+    return max(0.0, first_number(row, aliases, 0))
 
 
 def render_compare() -> None:
@@ -962,23 +1337,46 @@ def render_compare() -> None:
         startup_2 = st.text_input("Second startup", "Stripe")
 
     if st.button("Run comparison", use_container_width=True):
-        row1, row2 = fuzzy_match(master, startup_1), fuzzy_match(master, startup_2)
+        graph = load_graph_data()
+
+        def best_match(company_name: str) -> pd.Series | None:
+            candidates = [
+                match for match in (fuzzy_match(master, company_name), fuzzy_match(graph, company_name))
+                if match is not None
+            ]
+            if not candidates:
+                return None
+
+            def quality(row: pd.Series) -> float:
+                aliases = [
+                    ["signal_score", "vero_score", "score"],
+                    ["ph_votes", "product_hunt_votes", "votes_count"],
+                    ["github_total_stars", "github_stars", "stars"],
+                    ["github_followers", "followers"],
+                    ["github_public_repos", "public_repos", "repositories"],
+                ]
+                return sum(company_signal(row, group) > 0 for group in aliases)
+
+            return max(candidates, key=quality)
+
+        row1, row2 = best_match(startup_1), best_match(startup_2)
         if row1 is None or row2 is None:
             missing = startup_1 if row1 is None else startup_2
             st.warning(f"No match was found for {missing}. Try a shorter company name.")
             return
 
         def render_company(row: pd.Series) -> None:
-            name = row.get("name", "Unknown")
-            industry = row.get("industry_clean", row.get("industry", "Unknown"))
-            score = row.get("signal_score", 0)
+            name = clean_text(first_present(row, ["name", "company_name", "startup_name"]), "Unknown company")
+            industry = clean_text(first_present(row, ["industry_clean", "industry", "category", "sector"]), "Industry unavailable")
+            source = clean_text(first_present(row, ["source", "data_source", "platform"]), "VERO database")
+            score = first_number(row, ["signal_score", "vero_score", "score", "startup_score"], 0)
             st.markdown(
                 f"""
                 <div class="vero-card">
-                    <span class="vero-badge">{safe_html(row.get('source', 'Database'))}</span>
+                    <span class="vero-badge">{safe_html(source)}</span>
                     <div style="font-size:1.7rem;font-weight:850;margin-top:.8rem;">{safe_html(name)}</div>
                     <div class="vero-kpi-sub">{safe_html(industry)}</div>
-                    <div class="vero-kpi-value" style="margin-top:1rem;">{safe_number(score):.0f}</div>
+                    <div class="vero-kpi-value" style="margin-top:1rem;">{score:.0f}</div>
                     <div class="vero-kpi-sub">Overall signal score</div>
                 </div>
                 """,
@@ -993,22 +1391,22 @@ def render_compare() -> None:
 
         section_header("Signal comparison", "Longer bars indicate stronger observable traction in the selected database.")
         metrics = [
-            ("Product Hunt votes", "ph_votes"),
-            ("Product Hunt comments", "ph_comments"),
-            ("GitHub stars", "github_total_stars"),
-            ("GitHub followers", "github_followers"),
-            ("GitHub repositories", "github_public_repos"),
+            ("Product Hunt votes", ["ph_votes", "product_hunt_votes", "votes_count", "votes"]),
+            ("Product Hunt comments", ["ph_comments", "product_hunt_comments", "comments_count", "comments"]),
+            ("GitHub stars", ["github_total_stars", "github_stars", "stars"]),
+            ("GitHub followers", ["github_followers", "followers"]),
+            ("GitHub repositories", ["github_public_repos", "public_repos", "repositories", "repo_count"]),
         ]
-        for label, column in metrics:
-            v1, v2 = company_signal(row1, column), company_signal(row2, column)
+        for label, columns in metrics:
+            v1, v2 = company_signal(row1, columns), company_signal(row2, columns)
             maximum = max(v1, v2, 1)
             st.markdown(f"**{label}**")
             a, b = st.columns(2)
             with a:
-                progress_bar(str(row1.get("name", startup_1)), v1 / maximum * 100)
+                progress_bar(clean_text(first_present(row1, ["name", "company_name", "startup_name"]), startup_1), v1 / maximum * 100)
                 st.caption(f"Raw value: {v1:,.0f}")
             with b:
-                progress_bar(str(row2.get("name", startup_2)), v2 / maximum * 100)
+                progress_bar(clean_text(first_present(row2, ["name", "company_name", "startup_name"]), startup_2), v2 / maximum * 100)
                 st.caption(f"Raw value: {v2:,.0f}")
 
 
