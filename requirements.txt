@@ -4,3 +4,4 @@ joblib
 requests
 beautifulsoup4
 scikit-learn
+openai>=1.0.0

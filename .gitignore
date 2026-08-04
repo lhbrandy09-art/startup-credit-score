@@ -31,3 +31,5 @@ Outputs/*
 
 # Logs
 *.log
+
+.streamlit/secrets.toml
