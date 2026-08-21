@@ -33,3 +33,6 @@ Outputs/*
 *.log
 
 .streamlit/secrets.toml
+# Local development / backup files
+app_before_ai.py
+test_*.py

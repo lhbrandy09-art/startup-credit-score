@@ -336,6 +336,8 @@ if "theme_name" not in st.session_state:
     st.session_state.theme_name = "Executive"
 if "page" not in st.session_state:
     st.session_state.page = "Overview"
+if "terms_accepted" not in st.session_state:
+    st.session_state.terms_accepted = False
 
 # Apply navigation requests before the sidebar radio widget is created.
 # Streamlit does not allow changing st.session_state.page after the widget
@@ -838,12 +840,12 @@ def _percentile_signal(values: pd.Series) -> pd.Series:
     return result
 
 
+
 def recalculate_signal_scores(data: pd.DataFrame) -> pd.DataFrame:
-    """Create an evidence-aware 0-100 signal score.
+    """Create a differentiated, evidence-aware 0-100 signal score.
 
     Missing Product Hunt or GitHub observations are treated as unknown rather
-    than as proof that a company has no traction. Low-evidence companies are
-    pulled toward a neutral score and receive a low confidence rating.
+    than as proof that a company has no traction.
     """
     if data.empty:
         return data
@@ -876,27 +878,61 @@ def recalculate_signal_scores(data: pd.DataFrame) -> pd.DataFrame:
     github_repos = _percentile_signal(github_repos_raw)
     github_forks = _percentile_signal(github_forks_raw)
 
-    hiring = _binary_signal(scored, ["isHiring", "is_hiring", "hiring", "hiring_binary"])
-    yc_top = _binary_signal(scored, ["top_company", "is_top_company", "yc_top_company"])
+    hiring = _binary_signal(scored, [
+        "isHiring", "is_hiring", "hiring", "hiring_binary",
+    ])
+    yc_top = _binary_signal(scored, [
+        "top_company", "is_top_company", "yc_top_company",
+    ])
     product_hunt = _binary_signal(scored, [
         "Product_Hunt_Present", "product_hunt_present", "has_product_hunt",
     ])
-    ai_company = _binary_signal(scored, ["AI_Company", "ai_company", "is_ai"])
+    ai_company = _binary_signal(scored, [
+        "AI_Company", "ai_company", "is_ai", "ai_classification_inferred",
+    ])
 
     description_column = _first_existing_column(scored, [
-        "description_clean", "description", "short_description", "tagline",
+        "description_clean", "description", "short_description",
+        "long_description", "one_liner", "tagline",
     ])
+
     if description_column is None:
-        description_quality = pd.Series(0.0, index=scored.index, dtype=float)
+        descriptions = pd.Series("", index=scored.index, dtype=str)
     else:
         descriptions = scored[description_column].fillna("").astype(str)
-        invalid = descriptions.str.strip().str.lower().isin({"", "nan", "none", "null", "unknown"})
-        lengths = descriptions.mask(invalid, "").str.len()
-        description_quality = (lengths / 350).clip(lower=0, upper=1).astype(float)
+
+    invalid_description = descriptions.str.strip().str.lower().isin(
+        {"", "nan", "none", "null", "unknown", "unclassified"}
+    )
+    descriptions = descriptions.mask(invalid_description, "")
+
+    description_length = descriptions.str.len().astype(float)
+    description_words = descriptions.str.split().map(len).astype(float)
+    description_quality = (
+        0.60 * (description_length / 420).clip(0, 1)
+        + 0.40 * (description_words / 70).clip(0, 1)
+    )
+
+    richness_terms = [
+        "platform", "software", "saas", "marketplace", "api", "customers",
+        "businesses", "teams", "developers", "consumer", "subscription",
+        "payments", "enterprise", "automation", "cloud", "ai",
+        "machine learning", "health", "travel", "security", "data",
+        "workflow", "booking", "creator", "commerce", "infrastructure",
+    ]
+    lowered_descriptions = descriptions.str.lower()
+    richness_hits = pd.Series(0.0, index=scored.index, dtype=float)
+    for term in richness_terms:
+        richness_hits += lowered_descriptions.str.contains(
+            re.escape(term),
+            regex=True,
+            na=False,
+        ).astype(float)
+    text_richness = (richness_hits / 8).clip(0, 1)
 
     completeness_aliases = [
         ["website_clean", "website", "url"],
-        ["industry_clean", "industry", "category"],
+        ["industry_clean", "industry", "industry_inferred", "category"],
         ["business_type", "Business_Type", "business_type_inferred"],
         ["business_model", "revenue_model", "business_model_inferred"],
         ["batch", "yc_batch"],
@@ -904,25 +940,49 @@ def recalculate_signal_scores(data: pd.DataFrame) -> pd.DataFrame:
         ["location", "city", "country"],
         ["team_size", "employee_count", "employees"],
         ["source"],
+        ["tags", "tag_list", "keywords"],
     ]
+
     completeness = pd.Series(0.0, index=scored.index, dtype=float)
+
     for aliases in completeness_aliases:
         column = _first_existing_column(scored, aliases)
         if column is None:
             continue
+
         values = scored[column]
-        present = values.notna() & values.astype(str).str.strip().ne("")
-        present &= ~values.astype(str).str.lower().isin({"nan", "none", "null", "unknown", "unclassified"})
+        string_values = values.fillna("").astype(str).str.strip()
+        present = values.notna() & string_values.ne("")
+        present &= ~string_values.str.lower().isin({
+            "nan", "none", "null", "unknown", "unclassified",
+            "industry unavailable", "industry not classified",
+            "revenue model not classified",
+        })
         completeness += present.astype(float)
+
     completeness = (completeness / len(completeness_aliases)).clip(0, 1)
 
-    source_column = _first_existing_column(scored, ["source"])
+    classification_text = _classification_text(scored)
+    industry_results = classification_text.apply(
+        lambda value: _best_taxonomy_match(value, INDUSTRY_TAXONOMY)
+    )
+    business_model_results = classification_text.apply(
+        lambda value: _best_taxonomy_match(value, BUSINESS_MODEL_TAXONOMY)
+    )
+
+    industry_confidence = industry_results.map(lambda item: float(item[1]))
+    business_model_confidence = business_model_results.map(
+        lambda item: float(item[1])
+    )
+
+    source_column = _first_existing_column(scored, ["source", "dataset"])
     if source_column is None:
         verified_source = pd.Series(0.0, index=scored.index, dtype=float)
     else:
         source_values = scored[source_column].fillna("").astype(str).str.lower()
         verified_source = source_values.str.contains(
-            "yc|y combinator|techstars|500 global|product hunt|sequoia|a16z|andreessen|vc",
+            "yc|y combinator|techstars|500 global|product hunt|"
+            "sequoia|a16z|andreessen|vc|crunchbase",
             regex=True,
         ).astype(float)
 
@@ -935,67 +995,103 @@ def recalculate_signal_scores(data: pd.DataFrame) -> pd.DataFrame:
         + (github_forks_raw > 0).astype(int)
     )
 
-    # External evidence is scored only when it exists. A missing metric is not
-    # silently converted into a negative signal.
     external_numerator = (
-        ph_votes * 28 * (ph_votes_raw > 0)
-        + ph_comments * 10 * (ph_comments_raw > 0)
+        ph_votes * 30 * (ph_votes_raw > 0)
+        + ph_comments * 8 * (ph_comments_raw > 0)
         + github_stars * 28 * (github_stars_raw > 0)
         + github_followers * 12 * (github_followers_raw > 0)
         + github_repos * 12 * (github_repos_raw > 0)
         + github_forks * 10 * (github_forks_raw > 0)
     )
+
     external_denominator = (
-        28 * (ph_votes_raw > 0).astype(float)
-        + 10 * (ph_comments_raw > 0).astype(float)
+        30 * (ph_votes_raw > 0).astype(float)
+        + 8 * (ph_comments_raw > 0).astype(float)
         + 28 * (github_stars_raw > 0).astype(float)
         + 12 * (github_followers_raw > 0).astype(float)
         + 12 * (github_repos_raw > 0).astype(float)
         + 10 * (github_forks_raw > 0).astype(float)
     )
-    external_score = (external_numerator / external_denominator.replace(0, pd.NA)).fillna(0) * 100
 
-    # Profile evidence is a quality/completeness signal, not proof of traction.
+    external_score = (
+        external_numerator
+        / external_denominator.replace(0, pd.NA)
+    ).fillna(0) * 100
+
     profile_score = (
-        25
-        + description_quality * 20
-        + completeness * 25
-        + verified_source * 12
-        + hiring * 8
-        + yc_top * 8
-        + product_hunt * 2
+        18
+        + description_quality * 18
+        + text_richness * 9
+        + completeness * 17
+        + verified_source * 8
+        + industry_confidence * 8
+        + business_model_confidence * 6
+        + hiring * 5
+        + yc_top * 7
+        + product_hunt * 3
+        + ai_company * 1
     ).clip(0, 100)
 
     has_external = external_observations.gt(0)
     raw_score = profile_score.astype(float).copy()
     raw_score.loc[has_external] = (
-        external_score.loc[has_external].astype(float) * 0.70
-        + profile_score.loc[has_external].astype(float) * 0.30
+        external_score.loc[has_external].astype(float) * 0.62
+        + profile_score.loc[has_external].astype(float) * 0.38
     )
 
     confidence = (
-        12
-        + external_observations * 11
-        + completeness * 18
-        + description_quality * 10
+        10
+        + external_observations * 10
+        + completeness * 20
+        + description_quality * 12
+        + text_richness * 8
         + verified_source * 8
-    ).clip(12, 100)
+        + industry_confidence * 8
+        + business_model_confidence * 6
+    ).clip(10, 100)
 
-    # Low-confidence records are pulled toward 50 instead of being falsely
-    # presented as terrible companies. Confidence determines how far the score
-    # is allowed to move away from neutral.
-    confidence_factor = (confidence / 100).clip(0.15, 1.0)
-    final_score = 50 + (raw_score - 50) * confidence_factor
+    confidence_factor = (
+        0.55 + 0.45 * (confidence / 100)
+    ).clip(0.55, 1.0)
+
+    confidence_adjusted = 50 + (raw_score - 50) * confidence_factor
+
+    relative_rank = (
+        confidence_adjusted.rank(method="average", pct=True) * 100
+    )
+
+    meaningful = (
+        descriptions.str.len().gt(0)
+        | external_observations.gt(0)
+        | completeness.gt(0)
+        | verified_source.gt(0)
+    )
+
+    final_score = confidence_adjusted.copy()
+    final_score.loc[meaningful] = (
+        confidence_adjusted.loc[meaningful] * 0.80
+        + relative_rank.loc[meaningful] * 0.20
+    )
 
     scored["signal_score"] = final_score.round(1).clip(0, 100)
     scored["signal_confidence"] = confidence.round(0)
     scored["signal_external_score"] = external_score.round(1)
     scored["signal_profile_score"] = profile_score.round(1)
     scored["signal_observations"] = external_observations.astype(int)
+
     scored["signal_basis"] = "Profile evidence only"
-    scored.loc[external_observations.between(1, 2), "signal_basis"] = "Limited external evidence"
-    scored.loc[external_observations.between(3, 4), "signal_basis"] = "Mixed evidence"
-    scored.loc[external_observations.ge(5), "signal_basis"] = "Strong external evidence"
+    scored.loc[
+        external_observations.between(1, 2),
+        "signal_basis",
+    ] = "Limited external evidence"
+    scored.loc[
+        external_observations.between(3, 4),
+        "signal_basis",
+    ] = "Mixed evidence"
+    scored.loc[
+        external_observations.ge(5),
+        "signal_basis",
+    ] = "Strong external evidence"
 
     return scored
 
@@ -1093,6 +1189,8 @@ INDUSTRY_TAXONOMY: dict[str, list[str]] = {
         "artificial intelligence", "generative ai", "machine learning", "deep learning",
         "large language model", "llm", "computer vision", "ai-powered", "ai driven",
         "ai assistant", "foundation model", "natural language processing", "nlp",
+        "ai agent", "ai agents", "agentic", "autocomplete", "ai video",
+        "ai monitoring", "generative video", "ai visibility",
     ],
     "Healthcare": [
         "healthcare", "health care", "medical", "hospital", "patient", "clinical",
@@ -1115,7 +1213,8 @@ INDUSTRY_TAXONOMY: dict[str, list[str]] = {
     "Developer Tools": [
         "developer tools", "developer platform", "api", "sdk", "devops", "database",
         "cloud infrastructure", "deployment", "observability", "kubernetes", "hosting",
-        "software development", "code", "repository",
+        "software development", "code", "repository", "web apps", "edge platform",
+        "framework", "frameworks", "deploy", "developers", "developer infrastructure",
     ],
     "Cybersecurity": [
         "cybersecurity", "security", "zero trust", "authentication", "encryption",
@@ -1297,27 +1396,431 @@ def find_yc_match(name: str) -> pd.Series | None:
     return partial.iloc[0] if not partial.empty else None
 
 
+
+def _clean_website_phrase(value: Any) -> str:
+    """Normalize website copy and reject common navigation / browser noise."""
+    cleaned = clean_text(value)
+
+    if not cleaned:
+        return ""
+
+    cleaned = BeautifulSoup(cleaned, "html.parser").get_text(" ", strip=True)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+    lowered = cleaned.lower()
+
+    noise_phrases = [
+        "skip to content",
+        "enable javascript",
+        "javascript enabled",
+        "we're sorry",
+        "we’re sorry",
+        "privacy preferences",
+        "log in or sign up",
+        "help center",
+        "gift cards",
+        "add dates",
+        "add guests",
+        "0 of 0 items",
+        "homepage",
+    ]
+
+    if any(phrase in lowered for phrase in noise_phrases) and len(cleaned) < 180:
+        return ""
+
+    return cleaned
+
+
+def _unique_web_fragments(
+    fragments: list[str],
+    *,
+    max_chars: int = 1400,
+) -> str:
+    """Deduplicate useful website fragments while preserving order."""
+    result: list[str] = []
+    seen: set[str] = set()
+    total = 0
+
+    for fragment in fragments:
+        cleaned = _clean_website_phrase(fragment)
+
+        if not cleaned:
+            continue
+
+        chunks = re.split(
+            r"(?<=[.!?])\s+|(?:\s+[|•·]\s+)",
+            cleaned,
+        )
+
+        for chunk in chunks:
+            chunk = re.sub(r"\s+", " ", chunk).strip(" -–—|")
+
+            if len(chunk) < 18:
+                continue
+
+            lowered = chunk.casefold()
+
+            if any(
+                phrase in lowered
+                for phrase in [
+                    "skip to content",
+                    "log in or sign up",
+                    "become a host",
+                    "help center",
+                    "gift cards",
+                    "add dates",
+                    "add guests",
+                    "0 of 0 items",
+                    "javascript enabled",
+                    "all homes",
+                    "homes on",
+                ]
+            ):
+                continue
+
+            normalized = re.sub(
+                r"[^a-z0-9]+",
+                " ",
+                lowered,
+            ).strip()
+
+            if not normalized or normalized in seen:
+                continue
+
+            duplicate = False
+            for prior in seen:
+                if (
+                    len(normalized) > 30
+                    and (
+                        normalized in prior
+                        or prior in normalized
+                    )
+                ):
+                    duplicate = True
+                    break
+
+            if duplicate:
+                continue
+
+            seen.add(normalized)
+            result.append(chunk)
+            total += len(chunk) + 1
+
+            if total >= max_chars:
+                return " ".join(result).strip()
+
+    return " ".join(result).strip()
+
+
 def analyze_website(url: str) -> tuple[str, str]:
+    """Extract concise company evidence instead of dumping page navigation."""
     if not url:
         return "", ""
+
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
+
     try:
-        response = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+        response = requests.get(
+            url,
+            timeout=10,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0 Safari/537.36"
+                ),
+                "Accept-Language": "en-US,en;q=0.9",
+            },
+        )
         response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-        title = soup.title.string.strip() if soup.title and soup.title.string else ""
-        meta = soup.find("meta", attrs={"name": "description"})
-        description = meta.get("content", "") if meta else ""
-        text = soup.get_text(" ", strip=True)[:5000]
-        blocked = ["enable javascript and cookies", "verify you are human", "cloudflare", "access denied"]
-        if any(phrase in text.lower() for phrase in blocked):
-            text = ""
-        github_match = re.search(r"https?://github\.com/[A-Za-z0-9_.-]+", response.text)
-        github_url = github_match.group(0) if github_match else ""
-        return f"{title} {description} {text[:1000]}".strip(), github_url
+
+        soup = BeautifulSoup(
+            response.text,
+            "html.parser",
+        )
+
+        for tag in soup(
+            [
+                "script",
+                "style",
+                "noscript",
+                "nav",
+                "footer",
+                "header",
+                "form",
+                "button",
+                "svg",
+            ]
+        ):
+            tag.decompose()
+
+        fragments: list[str] = []
+
+        title = ""
+        if soup.title and soup.title.string:
+            title = _clean_website_phrase(
+                soup.title.string
+            )
+
+        meta_candidates = [
+            ("property", "og:description"),
+            ("name", "twitter:description"),
+            ("name", "description"),
+        ]
+
+        for attribute, value in meta_candidates:
+            tag = soup.find(
+                "meta",
+                attrs={attribute: value},
+            )
+
+            if tag:
+                content = _clean_website_phrase(
+                    tag.get("content", "")
+                )
+                if content:
+                    fragments.append(content)
+
+        for script in soup.find_all(
+            "script",
+            attrs={"type": "application/ld+json"},
+        ):
+            raw = script.string or script.get_text(
+                " ",
+                strip=True,
+            )
+
+            if not raw:
+                continue
+
+            try:
+                payload = json.loads(raw)
+            except Exception:
+                continue
+
+            nodes = payload if isinstance(payload, list) else [payload]
+
+            while nodes:
+                node = nodes.pop(0)
+
+                if isinstance(node, list):
+                    nodes.extend(node)
+                    continue
+
+                if not isinstance(node, dict):
+                    continue
+
+                graph_nodes = node.get("@graph")
+                if isinstance(graph_nodes, list):
+                    nodes.extend(graph_nodes)
+
+                description = _clean_website_phrase(
+                    node.get("description")
+                )
+                if description:
+                    fragments.append(description)
+
+        for selector in [
+            "main h1",
+            "main h2",
+            "main p",
+            "article h1",
+            "article h2",
+            "article p",
+            "h1",
+            "h2",
+        ]:
+            for element in soup.select(selector)[:12]:
+                phrase = _clean_website_phrase(
+                    element.get_text(
+                        " ",
+                        strip=True,
+                    )
+                )
+                if phrase:
+                    fragments.append(phrase)
+
+        clean_description = _unique_web_fragments(
+            fragments,
+            max_chars=1200,
+        )
+
+        # Some modern sites provide little usable metadata. Fall back to
+        # visible paragraph copy after navigation/script elements were removed.
+        if not clean_description:
+            fallback_fragments: list[str] = []
+
+            body = soup.find("main") or soup.find("body")
+            if body is not None:
+                for element in body.find_all(
+                    ["p", "h1", "h2", "h3"],
+                    limit=40,
+                ):
+                    phrase = re.sub(
+                        r"\s+",
+                        " ",
+                        element.get_text(" ", strip=True),
+                    ).strip()
+
+                    lowered_phrase = phrase.lower()
+
+                    if len(phrase) < 25:
+                        continue
+
+                    if any(
+                        noise in lowered_phrase
+                        for noise in [
+                            "skip to content",
+                            "log in or sign up",
+                            "become a host",
+                            "help center",
+                            "gift cards",
+                            "add dates",
+                            "add guests",
+                            "0 of 0 items",
+                            "javascript enabled",
+                            "cookie preferences",
+                        ]
+                    ):
+                        continue
+
+                    fallback_fragments.append(phrase)
+
+            clean_description = _unique_web_fragments(
+                fallback_fragments,
+                max_chars=1000,
+            )
+
+        # If the page exposes only a meaningful title, preserve it rather
+        # than returning an empty description.
+        if not clean_description and title:
+            clean_description = title
+
+        if (
+            title
+            and title.casefold()
+            not in clean_description.casefold()
+            and len(title) <= 160
+        ):
+            clean_description = _unique_web_fragments(
+                [title, clean_description],
+                max_chars=1200,
+            )
+
+        blocked = [
+            "verify you are human",
+            "cloudflare",
+            "access denied",
+            "captcha",
+        ]
+
+        if any(
+            phrase in clean_description.lower()
+            for phrase in blocked
+        ):
+            clean_description = ""
+
+        github_match = re.search(
+            r"https?://github\.com/[A-Za-z0-9_.-]+",
+            response.text,
+        )
+        github_url = (
+            github_match.group(0)
+            if github_match
+            else ""
+        )
+
+        return (
+            clean_description.strip(),
+            github_url,
+        )
+
     except requests.RequestException:
         return "", ""
+
+
+def get_database_description(company_name: str) -> str:
+    """Return the cleanest stored description VERO already has for a company."""
+    if not company_name.strip():
+        return ""
+
+    try:
+        row = get_unified_company_record(company_name)
+    except Exception:
+        row = pd.Series(dtype=object)
+
+    if row.empty:
+        return ""
+
+    description = clean_text(
+        first_present(
+            row,
+            [
+                "description_clean",
+                "description",
+                "short_description",
+                "long_description",
+                "one_liner",
+                "tagline",
+            ],
+        )
+    )
+
+    if not description:
+        return ""
+
+    # Stored descriptions can also contain navigation-like junk from old imports.
+    description = re.sub(r"\s+", " ", description).strip()
+
+    junk_patterns = [
+        r"\bskip to content\b",
+        r"\blog in or sign up\b",
+        r"\badd dates\b",
+        r"\badd guests\b",
+        r"\bhelp center\b",
+        r"\bgift cards\b",
+        r"\b0 of 0 items showing\b",
+        r"\bwe(?:'|’)re sorry\b.*?javascript enabled\.?",
+    ]
+
+    for pattern in junk_patterns:
+        description = re.sub(
+            pattern,
+            " ",
+            description,
+            flags=re.IGNORECASE,
+        )
+
+    description = re.sub(r"\s+", " ", description).strip()
+
+    # Keep enough detail for scoring, but avoid giant raw database dumps.
+    return description[:1600].strip()
+
+
+def build_import_description(
+    company_name: str,
+    website_description: str,
+) -> tuple[str, str]:
+    """Choose the best non-empty description without deleting existing evidence."""
+    website_description = clean_text(website_description)
+
+    if website_description:
+        return website_description, "website"
+
+    database_description = get_database_description(company_name)
+
+    if database_description:
+        return database_description, "VERO database"
+
+    existing = clean_text(
+        st.session_state.get("description_text")
+    )
+
+    if existing:
+        return existing, "existing description"
+
+    return "", "none"
 
 
 FORM_DEFAULTS = {
@@ -1355,6 +1858,7 @@ with st.sidebar:
             "Leaderboards",
             "Model Insights",
             "About",
+            "Privacy Policy",
             "Settings",
         ],
         key="page",
@@ -1373,6 +1877,511 @@ with st.sidebar:
     st.caption("VERO v1.0")
 
 inject_css(THEMES[st.session_state.theme_name])
+
+
+
+def build_row_classification_text(row: pd.Series) -> str:
+    fields = [
+        "name", "company_name", "startup_name",
+        "description_clean", "description", "short_description",
+        "long_description", "one_liner", "tagline",
+        "tags", "tag_list", "keywords", "industries",
+        "industry_clean", "industry", "industry_inferred",
+        "category", "vertical", "subindustry",
+        "business_type", "Business_Type", "business_type_inferred",
+        "business_model", "revenue_model", "business_model_inferred",
+        "customers", "products", "program_names",
+    ]
+
+    parts: list[str] = []
+    for field in fields:
+        if field not in row.index:
+            continue
+        value = clean_text(row.get(field))
+        if value and value.lower() not in {
+            "industry unavailable",
+            "industry not classified",
+            "unclassified",
+            "unknown",
+            "insufficient evidence",
+        } and value not in parts:
+            parts.append(value)
+
+    return " ".join(parts).strip()
+
+
+def resolve_row_industry(
+    row: pd.Series,
+    fallback: str = "Insufficient evidence",
+) -> tuple[str, str, float]:
+    source_value = clean_text(
+        first_present(
+            row,
+            [
+                "industry_clean",
+                "industry",
+                "industry_inferred",
+                "category",
+                "vertical",
+            ],
+        )
+    )
+
+    invalid = {
+        "",
+        "industry unavailable",
+        "industry not classified",
+        "unclassified",
+        "unknown",
+        "insufficient evidence",
+    }
+
+    if source_value.lower() not in invalid:
+        return source_value, "Source data", 1.0
+
+    evidence_text = build_row_classification_text(row)
+
+    if evidence_text:
+        label, confidence = _best_taxonomy_match(
+            evidence_text.lower(),
+            INDUSTRY_TAXONOMY,
+        )
+        if label:
+            return label, "VERO text inference", confidence
+
+        try:
+            profile = build_company_profile(evidence_text)
+            if profile.primary_industry:
+                return (
+                    profile.primary_industry,
+                    "VERO intelligence engine",
+                    safe_number(profile.industry_confidence),
+                )
+        except Exception:
+            pass
+
+    return fallback, "Insufficient evidence", 0.0
+
+
+def _normalize_company_lookup_name(value: Any) -> str:
+    return re.sub(
+        r"[^a-z0-9]+",
+        "",
+        clean_text(value).lower(),
+    )
+
+
+def _company_row_value_quality(value: Any) -> float:
+    cleaned = clean_text(value)
+
+    if not cleaned:
+        return 0.0
+
+    try:
+        if isinstance(value, (int, float)) and not pd.isna(value):
+            return 1.0 if float(value) != 0 else 0.15
+    except (TypeError, ValueError):
+        pass
+
+    if cleaned.lower() in {
+        "unknown",
+        "unclassified",
+        "industry unavailable",
+        "industry not classified",
+        "revenue model not classified",
+        "location unavailable",
+        "unavailable",
+        "insufficient evidence",
+    }:
+        return 0.0
+
+    return 0.35 + min(len(cleaned) / 140.0, 1.0)
+
+
+def _matching_company_rows(
+    data: pd.DataFrame,
+    company_name: str,
+) -> pd.DataFrame:
+    if data.empty or not company_name.strip():
+        return pd.DataFrame()
+
+    name_column = next(
+        (
+            column
+            for column in [
+                "name",
+                "company_name",
+                "startup_name",
+                "organization_name",
+            ]
+            if column in data.columns
+        ),
+        None,
+    )
+
+    if name_column is None:
+        return pd.DataFrame()
+
+    names = data[name_column].fillna("").astype(str)
+    target = _normalize_company_lookup_name(company_name)
+
+    exact = data[
+        names.map(_normalize_company_lookup_name).eq(target)
+    ]
+
+    if not exact.empty:
+        return exact.copy()
+
+    lowered = company_name.strip().lower()
+
+    return data[
+        names.str.lower().str.contains(
+            re.escape(lowered),
+            na=False,
+        )
+    ].copy()
+
+
+def get_unified_company_record(
+    company_name: str,
+) -> pd.Series:
+    """Merge all matching VERO/YC rows into one best-evidence record."""
+    groups: list[pd.DataFrame] = []
+
+    for data in [
+        load_graph_data(),
+        load_master_data(),
+        yc_data,
+    ]:
+        matches = _matching_company_rows(
+            data,
+            company_name,
+        )
+        if not matches.empty:
+            groups.append(matches)
+
+    if not groups:
+        return pd.Series(dtype=object)
+
+    combined = pd.concat(
+        groups,
+        ignore_index=True,
+        sort=False,
+    )
+
+    merged: dict[str, Any] = {}
+
+    for column in combined.columns:
+        best_value: Any = None
+        best_quality = -1.0
+
+        for value in combined[column].tolist():
+            quality = _company_row_value_quality(value)
+
+            if quality > best_quality:
+                best_value = value
+                best_quality = quality
+
+        merged[column] = best_value
+
+    merged["name"] = company_name
+    merged["_merged_record_count"] = len(combined)
+
+    return pd.Series(merged)
+
+
+def enrich_structural_evidence(
+    company_name: str,
+    row: pd.Series,
+    evidence_text: str,
+) -> str:
+    """Translate detected company structure into partial-weight VERO evidence.
+
+    The calibrated moat engine recognizes the 'Structural evidence:' section and
+    intentionally gives it less weight than direct/source evidence.
+    """
+    if row is None or row.empty:
+        return evidence_text.strip()
+
+    industry, _, _ = resolve_row_industry(row)
+
+    business_model = clean_text(
+        first_present(
+            row,
+            [
+                "business_model",
+                "revenue_model",
+                "business_model_inferred",
+            ],
+        )
+    )
+
+    source_text = (
+        " "
+        + company_name.lower()
+        + " "
+        + evidence_text.lower()
+        + " "
+        + industry.lower()
+        + " "
+        + business_model.lower()
+        + " "
+    )
+
+    clues: list[str] = []
+
+    if any(
+        term in source_text
+        for term in [
+            "marketplace",
+            "two-sided",
+            "booking platform",
+            "hosts",
+            "guests",
+            "buyers and sellers",
+            "rental marketplace",
+        ]
+    ):
+        clues.extend([
+            "two sided marketplace",
+            "marketplace liquidity",
+            "network effects",
+            "repeat transactions",
+            "customer trust and reputation system",
+        ])
+
+    if any(
+        term in source_text
+        for term in [
+            "api",
+            "sdk",
+            "developer",
+            "infrastructure",
+            "payments infrastructure",
+            "cloud infrastructure",
+        ]
+    ):
+        clues.extend([
+            "deep product integrations",
+            "developer ecosystem",
+            "embedded into customer workflows",
+            "switching costs",
+            "integration complexity",
+            "recurring usage",
+        ])
+
+    if any(
+        term in source_text
+        for term in [
+            "enterprise",
+            "annual contract",
+            "multi-year contract",
+            "procurement",
+            "saas",
+            "b2b",
+        ]
+    ):
+        clues.extend([
+            "recurring revenue",
+            "enterprise customer relationships",
+            "workflow integration",
+            "switching costs",
+            "long sales cycle",
+            "implementation complexity",
+        ])
+
+    if industry == "Travel and Hospitality":
+        clues.extend([
+            "travel demand exposure",
+            "regulatory complexity",
+            "local market regulation",
+            "competitive marketplace",
+        ])
+
+    if industry == "Financial Technology":
+        clues.extend([
+            "regulatory complexity",
+            "compliance requirements",
+            "payments infrastructure",
+            "fraud risk",
+            "high technical depth",
+        ])
+
+    if industry == "Healthcare":
+        clues.extend([
+            "regulatory complexity",
+            "compliance requirements",
+            "workflow integration",
+            "high switching costs",
+        ])
+
+    if industry == "Developer Tools":
+        clues.extend([
+            "developer adoption",
+            "technical depth",
+            "integration into software workflows",
+            "switching costs",
+        ])
+
+    if industry == "Artificial Intelligence":
+        clues.extend([
+            "technical depth",
+            "model dependency risk",
+            "rapidly evolving competition",
+        ])
+
+    deduped: list[str] = []
+    for clue in clues:
+        if clue not in deduped:
+            deduped.append(clue)
+
+    pieces = [evidence_text.strip()] if evidence_text.strip() else []
+
+    if deduped:
+        pieces.append(
+            "Structural evidence: "
+            + "; ".join(deduped)
+            + "."
+        )
+
+    return "\n".join(pieces).strip()
+
+
+def build_unified_vero_result(
+    company_name: str,
+    *,
+    manual_text: str = "",
+    metadata_text: str = "",
+    ai_report: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """One scoring pipeline used by Analyze, Profile, Compare, and Overview.
+
+    Database evidence is always the common baseline when a matching company
+    exists. Manual/website or AI evidence is additive and explicitly changes the
+    evidence mode rather than silently creating a different scoring system.
+    """
+    clean_name = clean_text(company_name, "Unnamed startup")
+    row = get_unified_company_record(clean_name)
+
+    evidence_sections: list[str] = []
+    evidence_modes: list[str] = []
+
+    if not row.empty:
+        database_text = build_row_classification_text(row)
+        database_text = enrich_structural_evidence(
+            clean_name,
+            row,
+            database_text,
+        )
+
+        if database_text:
+            evidence_sections.append(
+                "Database evidence:\n" + database_text
+            )
+            evidence_modes.append("Database")
+
+    clean_manual = manual_text.strip()
+
+    if clean_manual:
+        evidence_sections.append(
+            "Manual / website evidence:\n"
+            + clean_manual
+        )
+        evidence_modes.append("Manual")
+
+    if metadata_text.strip():
+        evidence_sections.append(
+            "Structured metadata:\n"
+            + metadata_text.strip()
+        )
+
+    if isinstance(ai_report, dict):
+        ai_text = research_to_description(ai_report).strip()
+
+        if ai_text:
+            evidence_sections.append(
+                "AI researched evidence:\n"
+                + ai_text
+            )
+            evidence_modes.append("AI research")
+
+    # De-duplicate entire sections while preserving order.
+    unique_sections: list[str] = []
+    for section in evidence_sections:
+        if section and section not in unique_sections:
+            unique_sections.append(section)
+
+    evidence_text = "\n\n".join(unique_sections).strip()
+
+    if not evidence_text:
+        raise ValueError(
+            "VERO does not have enough evidence to score this company."
+        )
+
+    profile = build_company_profile(evidence_text)
+    vero = analyze_vero_score(profile)
+
+    mode_order = [
+        mode
+        for mode in ["Database", "Manual", "AI research"]
+        if mode in evidence_modes
+    ]
+    evidence_mode = " + ".join(mode_order) or "Manual"
+
+    evidence_confidence = safe_number(
+        getattr(
+            profile,
+            "overall_evidence_confidence",
+            0,
+        )
+    ) * 100
+
+    return {
+        "name": clean_name,
+        "row": row,
+        "evidence_text": evidence_text,
+        "evidence_mode": evidence_mode,
+        "evidence_confidence": evidence_confidence,
+        "profile": profile,
+        "vero": vero,
+    }
+
+
+
+@st.cache_data(show_spinner=False)
+def build_cached_database_vero_result(
+    company_name: str,
+) -> dict[str, Any]:
+    """Cached database-only VERO result for browsing pages.
+
+    This avoids repeatedly re-running every intelligence engine for the same
+    company on every Streamlit rerun/page switch.
+    """
+    result = build_unified_vero_result(company_name)
+
+    # Return only serializable/simple objects Streamlit can cache safely.
+    return {
+        "name": result["name"],
+        "evidence_text": result["evidence_text"],
+        "evidence_mode": result["evidence_mode"],
+        "evidence_confidence": result["evidence_confidence"],
+        "profile_dict": result["profile"].to_dict(),
+        "vero_dict": result["vero"].to_dict(),
+    }
+
+
+def get_cached_database_vero_objects(
+    company_name: str,
+) -> tuple[dict[str, Any], dict[str, Any], float, str, str]:
+    """Convenience wrapper around the cached serializable result."""
+    result = build_cached_database_vero_result(company_name)
+    return (
+        result["profile_dict"],
+        result["vero_dict"],
+        safe_number(result["evidence_confidence"]),
+        clean_text(result["evidence_mode"], "Database"),
+        result["evidence_text"],
+    )
 
 
 def render_overview() -> None:
@@ -1404,11 +2413,11 @@ def render_overview() -> None:
         company = st.text_input("Search or analyze a startup", placeholder="Try Stripe, Airbnb, or a startup website")
         col_a, col_b = st.columns(2)
         with col_a:
-            if st.button("Analyze startup", use_container_width=True):
+            if st.button("Analyze startup", width="stretch"):
                 st.session_state["overview_company"] = company or "Example Startup"
                 navigate_to("Analyze Startup")
         with col_b:
-            if st.button("Open profile search", use_container_width=True):
+            if st.button("Open profile search", width="stretch"):
                 st.session_state["profile_query"] = company or "Airbnb"
                 navigate_to("Startup Profile")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -1452,8 +2461,35 @@ def render_overview() -> None:
             if normalized_name in seen_names:
                 continue
 
-            score = first_number(row, score_columns, 0)
-            industry = clean_text(first_present(row, industry_columns), "Industry unavailable")
+            try:
+                (
+                    profile_dict,
+                    vero_dict,
+                    card_confidence,
+                    _evidence_mode,
+                    _evidence_text,
+                ) = get_cached_database_vero_objects(name)
+
+                score = safe_number(
+                    vero_dict.get("overall_score"),
+                    0,
+                )
+                industry = clean_text(
+                    profile_dict.get("industry", {}).get("primary"),
+                    resolve_row_industry(row)[0],
+                )
+                industry_method = "Unified VERO pipeline"
+                industry_confidence = safe_number(
+                    profile_dict.get("industry", {}).get("confidence"),
+                    0,
+                )
+            except Exception:
+                score = first_number(row, score_columns, 0)
+                card_confidence = safe_number(
+                    row.get("signal_confidence"),
+                    0,
+                )
+                industry, industry_method, industry_confidence = resolve_row_industry(row)
             description = clean_text(
                 first_present(row, description_columns),
                 f"{name} is included in VERO's startup intelligence database."
@@ -1465,6 +2501,9 @@ def render_overview() -> None:
                 "name": name,
                 "score": score,
                 "industry": industry,
+                "industry_method": industry_method,
+                "industry_confidence": industry_confidence,
+                "signal_confidence": card_confidence,
                 "description": description,
             })
             seen_names.add(normalized_name)
@@ -1486,11 +2525,15 @@ def render_overview() -> None:
                                 <div>
                                     <div style="font-weight:850;font-size:1rem;">{safe_html(card["name"])}</div>
                                     <span class="vero-badge">{safe_html(card["industry"])}</span>
+                                    <div class="vero-kpi-sub" style="margin-top:.28rem;">
+                                        {safe_html(card["industry_method"])}
+                                        {f" · {card['industry_confidence']:.0%}" if card["industry_confidence"] else ""}
+                                    </div>
                                 </div>
                             </div>
                             <div class="vero-kpi-sub" style="min-height:58px;line-height:1.5;">{safe_html(card["description"])}</div>
                             <div style="display:flex;justify-content:space-between;align-items:end;margin-top:1rem;">
-                                <span class="vero-kpi-sub">Signal score</span>
+                                <span class="vero-kpi-sub">VERO score · {card["signal_confidence"]:.0f}% confidence</span>
                                 <strong style="font-size:1.7rem;">{card["score"]:.0f}</strong>
                             </div>
                         </div>
@@ -1558,6 +2601,22 @@ def render_analysis_result(result: dict[str, Any]) -> None:
     c3.metric("Business quality", f"{profile.overall_business_quality_score:.2f}/10")
     c4.metric("Risk", f"{profile.overall_risk_score:.2f}/10")
 
+    evidence_mode = clean_text(
+        result.get("evidence_mode"),
+        "Manual",
+    )
+    evidence_confidence = safe_number(
+        result.get(
+            "evidence_confidence",
+            getattr(profile, "overall_evidence_confidence", 0) * 100,
+        )
+    )
+
+    st.caption(
+        f"Evidence mode: {evidence_mode} · "
+        f"{evidence_confidence:.0f}% overall evidence confidence"
+    )
+
     st.info(
         f"**Why this rating:** VERO assigned **{grade}** because the weighted "
         f"components total **{score:.1f}/100**. Business quality contributed "
@@ -1577,7 +2636,17 @@ def render_analysis_result(result: dict[str, Any]) -> None:
     with p3:
         kpi_card("Signal engine", f"{profile.overall_signal_score:.1f}/100", "Strategic evidence score")
 
-    section_header("Score breakdown", "Each component's contribution to the final 100-point score.")
+    if getattr(profile, "overall_evidence_confidence", 1.0) < 0.35:
+        st.warning(
+            "This assessment has limited supporting evidence. Low-confidence "
+            "components are pulled toward neutral rather than treated as proof "
+            "of weakness."
+        )
+
+    section_header(
+        "Score breakdown",
+        "Each component's contribution to the final 100-point score.",
+    )
     maximums = {
         "business_quality": 30.0,
         "moat": 25.0,
@@ -1585,12 +2654,45 @@ def render_analysis_result(result: dict[str, Any]) -> None:
         "risk_adjustment": 20.0,
         "confidence": 10.0,
     }
+    moat_status = getattr(profile, "moat_status", "supported")
+    business_quality_status = getattr(
+        profile,
+        "business_quality_status",
+        "supported",
+    )
+    risk_status = getattr(profile, "risk_status", "supported")
+
     explanations = {
-        "business_quality": f"Raw business-quality score: {profile.overall_business_quality_score:.2f}/10.",
-        "moat": f"Raw moat score: {profile.overall_moat_score:.2f}/10; strongest moat: {readable(profile.strongest_moat)}.",
-        "signals": f"Raw strategic-signal score: {profile.overall_signal_score:.2f}/100.",
-        "risk_adjustment": f"Raw risk score: {profile.overall_risk_score:.2f}/10. Lower risk earns more points.",
-        "confidence": "Rewards specific, well-supported evidence across VERO's engines.",
+        "business_quality": (
+            "Insufficient evidence to measure business quality reliably."
+            if business_quality_status == "insufficient_evidence"
+            else f"Raw business-quality score: {profile.overall_business_quality_score:.2f}/10."
+        ),
+        "moat": (
+            "Insufficient direct evidence to measure competitive moat. "
+            "VERO treats this as unknown rather than a zero-quality moat."
+            if moat_status == "insufficient_evidence"
+            else (
+                f"Raw moat score: {profile.overall_moat_score:.2f}/10; "
+                f"strongest moat: {readable(profile.strongest_moat)}."
+            )
+        ),
+        "signals": (
+            f"Raw strategic-signal score: "
+            f"{profile.overall_signal_score:.2f}/100."
+        ),
+        "risk_adjustment": (
+            "Insufficient evidence to measure risk reliably."
+            if risk_status == "insufficient_evidence"
+            else (
+                f"Raw risk score: {profile.overall_risk_score:.2f}/10. "
+                "Lower risk earns more points."
+            )
+        ),
+        "confidence": (
+            "Measures how strongly the available evidence supports VERO's "
+            "component estimates."
+        ),
     }
     for key in maximums:
         value = safe_number(components.get(key))
@@ -1667,6 +2769,13 @@ def render_analysis_result(result: dict[str, Any]) -> None:
         "This output is decision support, not an investment recommendation."
     )
 
+    if result.get("evidence_text"):
+        with st.expander("View unified evidence used for this score"):
+            st.code(
+                result["evidence_text"],
+                language="text",
+            )
+
     with st.expander("View full VERO intelligence profile"):
         st.json(profile.to_dict())
     with st.expander("View full VERO score output"):
@@ -1690,11 +2799,11 @@ def render_analyze() -> None:
 
     research_col, import_col, clear_col = st.columns([2, 2, 1])
     with research_col:
-        ai_research_clicked = st.button("Research with AI + live web", use_container_width=True, type="primary")
+        ai_research_clicked = st.button("Research with AI + live web", width="stretch", type="primary")
     with import_col:
-        import_signals_clicked = st.button("Import website and YC signals", use_container_width=True)
+        import_signals_clicked = st.button("Import website and YC signals", width="stretch")
     with clear_col:
-        if st.button("Clear", use_container_width=True):
+        if st.button("Clear", width="stretch"):
             st.session_state.score_result = None
             st.session_state.ai_research_report = None
             st.rerun()
@@ -1728,20 +2837,59 @@ def render_analyze() -> None:
     if import_signals_clicked:
         with st.spinner("Collecting public website signals..."):
             auto_description, auto_github = analyze_website(website_url)
-            if auto_description:
-                st.session_state.description_text = auto_description
-                st.session_state.ai_company = classify_ai(auto_description)
-                st.session_state.business_type = classify_business_type(auto_description)
+
+            chosen_description, description_source = build_import_description(
+                name,
+                auto_description,
+            )
+
+            if chosen_description:
+                st.session_state.description_text = chosen_description
+                st.session_state.ai_company = classify_ai(chosen_description)
+                st.session_state.business_type = classify_business_type(
+                    chosen_description
+                )
+
             yc_match = find_yc_match(name)
+
             if yc_match is not None:
                 apply_yc_match(yc_match)
-                st.success(f"Matched {yc_match.get('name', name)} in the YC dataset.")
-            elif auto_description:
-                st.success("Website text imported. No YC match was found.")
+
+            if chosen_description:
+                if description_source == "website":
+                    st.success(
+                        "Imported a cleaned website description"
+                        + (
+                            f" and matched {yc_match.get('name', name)} in YC."
+                            if yc_match is not None
+                            else "."
+                        )
+                    )
+                elif description_source == "VERO database":
+                    st.info(
+                        "The website did not expose a clean description, "
+                        "so VERO used its stored company description instead."
+                    )
+                else:
+                    st.info(
+                        "The website did not expose a clean description. "
+                        "VERO kept the existing description instead of clearing it."
+                    )
+            elif yc_match is not None:
+                st.success(
+                    f"Matched {yc_match.get('name', name)} in the YC dataset. "
+                    "No clean company description was available."
+                )
             else:
-                st.warning("No website text or YC match was found. Manual analysis remains available.")
+                st.warning(
+                    "VERO could not extract a clean website description or find "
+                    "stored company text. Enter the description manually."
+                )
+
             if auto_github:
-                st.info(f"Detected GitHub organization: {auto_github}")
+                st.info(
+                    f"Detected GitHub organization: {auto_github}"
+                )
 
     report = st.session_state.get("ai_research_report")
     if isinstance(report, dict):
@@ -1799,7 +2947,7 @@ def render_analyze() -> None:
             github_public_repos = st.number_input("GitHub public repositories", min_value=0, key="github_public_repos")
             github_total_stars = st.number_input("GitHub total stars", min_value=0, key="github_total_stars")
             github_total_forks = st.number_input("GitHub total forks", min_value=0, key="github_total_forks")
-        submitted = st.form_submit_button("Calculate VERO score", use_container_width=True)
+        submitted = st.form_submit_button("Calculate VERO score", width="stretch")
 
     if submitted:
         cleaned = description.strip()
@@ -1814,13 +2962,13 @@ def render_analyze() -> None:
             )
             with st.spinner("Building VERO intelligence profile..."):
                 try:
-                    profile = build_company_profile(cleaned + metadata)
-                    vero_score = analyze_vero_score(profile)
-                    st.session_state.score_result = {
-                        "name": name.strip() or "Unnamed startup",
-                        "profile": profile,
-                        "vero": vero_score,
-                    }
+                    unified = build_unified_vero_result(
+                        name.strip() or "Unnamed startup",
+                        manual_text=cleaned,
+                        metadata_text=metadata,
+                        ai_report=st.session_state.get("ai_research_report"),
+                    )
+                    st.session_state.score_result = unified
                 except Exception as exc:
                     st.error(f"VERO could not analyze this startup: {exc}")
 
@@ -1868,465 +3016,3120 @@ def company_signal(row: pd.Series, columns: str | list[str]) -> float:
     return max(0.0, first_number(row, aliases, 0))
 
 
+
+def enrich_comparison_evidence(
+    company_name: str,
+    row: pd.Series,
+    evidence_text: str,
+) -> str:
+    """Add deterministic structural clues so VERO engines can evaluate sparse rows.
+
+    This does not invent company facts. It converts already-detected industry,
+    business-model, customer, and platform structure into normalized evidence
+    phrases the existing moat/risk/business-quality engines understand.
+    """
+    parts: list[str] = [evidence_text.strip()] if evidence_text.strip() else []
+
+    industry, _, _ = resolve_row_industry(row)
+
+    business_model = clean_text(
+        first_present(
+            row,
+            [
+                "business_model",
+                "revenue_model",
+                "business_model_inferred",
+            ],
+        )
+    )
+
+    if not business_model:
+        model_label, _ = _best_taxonomy_match(
+            build_row_classification_text(row).lower(),
+            BUSINESS_MODEL_TAXONOMY,
+        )
+        business_model = model_label
+
+    business_type = clean_text(
+        first_present(
+            row,
+            [
+                "business_type",
+                "Business_Type",
+                "business_type_inferred",
+            ],
+        )
+    )
+
+    lowered = (
+        " "
+        + company_name.lower()
+        + " "
+        + evidence_text.lower()
+        + " "
+        + industry.lower()
+        + " "
+        + business_model.lower()
+        + " "
+        + business_type.lower()
+        + " "
+    )
+
+    structural_clues: list[str] = []
+
+    # Marketplace structure
+    marketplace_terms = [
+        "marketplace",
+        "two-sided",
+        "booking platform",
+        "matching platform",
+        "buyers and sellers",
+        "hosts",
+        "guests",
+        "rental marketplace",
+        "travel marketplace",
+    ]
+    if (
+        "marketplace" in business_model.lower()
+        or any(term in lowered for term in marketplace_terms)
+    ):
+        structural_clues.extend([
+            "two sided marketplace",
+            "marketplace liquidity",
+            "network effects",
+            "supply and demand network",
+            "repeat transactions",
+            "customer trust and reputation system",
+        ])
+
+    # API / developer infrastructure structure
+    api_terms = [
+        "api",
+        "sdk",
+        "developer",
+        "infrastructure",
+        "payments infrastructure",
+        "cloud infrastructure",
+        "platform as a service",
+    ]
+    if (
+        "api" in business_model.lower()
+        or "infrastructure" in business_model.lower()
+        or any(term in lowered for term in api_terms)
+    ):
+        structural_clues.extend([
+            "deep product integrations",
+            "developer ecosystem",
+            "embedded into customer workflows",
+            "switching costs",
+            "integration complexity",
+            "recurring usage",
+            "platform dependency risk",
+        ])
+
+    # Enterprise SaaS / contract structure
+    enterprise_terms = [
+        "enterprise",
+        "annual contract",
+        "multi-year contract",
+        "procurement",
+        "b2b",
+        "saas",
+    ]
+    if any(term in lowered for term in enterprise_terms):
+        structural_clues.extend([
+            "recurring revenue",
+            "annual contracts",
+            "enterprise customer relationships",
+            "workflow integration",
+            "switching costs",
+            "long sales cycle",
+            "implementation complexity",
+        ])
+
+    # Consumer / brand-led structure
+    consumer_terms = [
+        "consumer",
+        "users",
+        "travel",
+        "shopping",
+        "creator",
+        "social",
+        "mobile app",
+    ]
+    if any(term in lowered for term in consumer_terms):
+        structural_clues.extend([
+            "brand awareness",
+            "consumer demand",
+            "customer acquisition risk",
+            "competitive market",
+        ])
+
+    # Industry context
+    if industry == "Travel and Hospitality":
+        structural_clues.extend([
+            "travel demand exposure",
+            "regulatory complexity",
+            "local market regulation",
+            "competitive marketplace",
+        ])
+
+    if industry == "Financial Technology":
+        structural_clues.extend([
+            "regulatory complexity",
+            "compliance requirements",
+            "payments infrastructure",
+            "fraud risk",
+            "high technical depth",
+        ])
+
+    if industry == "Healthcare":
+        structural_clues.extend([
+            "regulatory complexity",
+            "compliance requirements",
+            "workflow integration",
+            "high switching costs",
+        ])
+
+    if industry == "Developer Tools":
+        structural_clues.extend([
+            "developer adoption",
+            "technical depth",
+            "integration into software workflows",
+            "switching costs",
+        ])
+
+    if industry == "Artificial Intelligence":
+        structural_clues.extend([
+            "technical depth",
+            "model dependency risk",
+            "rapidly evolving competition",
+        ])
+
+    # Observable metadata
+    if company_signal(
+        row,
+        ["github_total_stars", "github_stars", "stars"],
+    ) > 0:
+        structural_clues.append("developer interest")
+
+    if company_signal(
+        row,
+        ["github_public_repos", "public_repos", "repo_count"],
+    ) > 0:
+        structural_clues.append("open source activity")
+
+    if company_signal(
+        row,
+        ["ph_votes", "product_hunt_votes", "votes_count"],
+    ) > 0:
+        structural_clues.append("product demand signal")
+
+    hiring_value = clean_text(
+        first_present(
+            row,
+            ["isHiring", "is_hiring", "hiring", "hiring_binary"],
+        )
+    ).lower()
+    if hiring_value in {"true", "yes", "1"}:
+        structural_clues.append("currently hiring")
+
+    # Keep deterministic phrases deduplicated.
+    deduped: list[str] = []
+    for clue in structural_clues:
+        if clue and clue not in deduped:
+            deduped.append(clue)
+
+    if deduped:
+        parts.append(
+            "Structural evidence: "
+            + "; ".join(deduped)
+            + "."
+        )
+
+    return "\n".join(part for part in parts if part).strip()
+
 def render_compare() -> None:
     page_header(
         "Side-by-side analysis",
         "Compare startups.",
-        "Place two companies next to each other and see where each one leads across product, developer, and platform signals.",
+        "Compare two companies across VERO signal strength, profile evidence, business quality, moat, risk, and any observable external traction.",
     )
+
     master = load_master_data()
-    if master.empty:
+    graph = load_graph_data()
+
+    if master.empty and graph.empty:
         st.warning("No comparison database is currently available.")
         return
 
     c1, c2 = st.columns(2)
+
     with c1:
-        startup_1 = st.text_input("First startup", "Airbnb")
+        startup_1 = st.text_input(
+            "First startup",
+            "Airbnb",
+            key="compare_startup_1",
+        )
+
     with c2:
-        startup_2 = st.text_input("Second startup", "Stripe")
+        startup_2 = st.text_input(
+            "Second startup",
+            "Stripe",
+            key="compare_startup_2",
+        )
 
-    if st.button("Run comparison", use_container_width=True):
-        graph = load_graph_data()
+    if not st.button(
+        "Run comparison",
+        width="stretch",
+        type="primary",
+    ):
+        return
 
-        def best_match(company_name: str) -> pd.Series | None:
-            candidates = [
-                match for match in (fuzzy_match(master, company_name), fuzzy_match(graph, company_name))
-                if match is not None
-            ]
-            if not candidates:
-                return None
+    def candidate_rows(
+        data: pd.DataFrame,
+        company_name: str,
+    ) -> list[pd.Series]:
+        if data.empty:
+            return []
 
-            def quality(row: pd.Series) -> float:
-                aliases = [
-                    ["signal_score", "vero_score", "score"],
-                    ["ph_votes", "product_hunt_votes", "votes_count"],
-                    ["github_total_stars", "github_stars", "stars"],
-                    ["github_followers", "followers"],
-                    ["github_public_repos", "public_repos", "repositories"],
+        name_col = next(
+            (
+                column
+                for column in [
+                    "name",
+                    "company_name",
+                    "startup_name",
+                    "organization_name",
                 ]
-                return sum(company_signal(row, group) > 0 for group in aliases)
+                if column in data.columns
+            ),
+            None,
+        )
 
-            return max(candidates, key=quality)
+        if name_col is None:
+            return []
 
-        row1, row2 = best_match(startup_1), best_match(startup_2)
-        if row1 is None or row2 is None:
-            missing = startup_1 if row1 is None else startup_2
-            st.warning(f"No match was found for {missing}. Try a shorter company name.")
-            return
+        names = data[name_col].fillna("").astype(str).str.strip()
+        target = company_name.strip().lower()
 
-        def render_company(row: pd.Series) -> None:
-            name = clean_text(first_present(row, ["name", "company_name", "startup_name"]), "Unknown company")
-            industry = clean_text(first_present(row, ["industry_clean", "industry", "category", "sector"]), "Industry unavailable")
-            source = clean_text(first_present(row, ["source", "data_source", "platform"]), "VERO database")
-            score = first_number(row, ["signal_score", "vero_score", "score", "startup_score"], 0)
-            st.markdown(
-                f"""
-                <div class="vero-card">
-                    <span class="vero-badge">{safe_html(source)}</span>
-                    <div style="font-size:1.7rem;font-weight:850;margin-top:.8rem;">{safe_html(name)}</div>
-                    <div class="vero-kpi-sub">{safe_html(industry)}</div>
-                    <div class="vero-kpi-value" style="margin-top:1rem;">{score:.0f}</div>
-                    <div class="vero-kpi-sub">Overall signal score</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
+        exact = data[names.str.lower().eq(target)]
+
+        if not exact.empty:
+            return [
+                row
+                for _, row in exact.iterrows()
+            ]
+
+        partial = data[
+            names.str.lower().str.contains(
+                re.escape(target),
+                na=False,
+            )
+        ]
+
+        return [
+            row
+            for _, row in partial.iterrows()
+        ]
+
+    def row_quality(row: pd.Series) -> float:
+        quality = 0.0
+
+        descriptive_fields = [
+            "description_clean",
+            "description",
+            "short_description",
+            "long_description",
+            "one_liner",
+            "tagline",
+            "industry",
+            "industry_clean",
+            "industry_inferred",
+            "business_model_inferred",
+            "website_clean",
+            "website",
+            "source",
+        ]
+
+        for field in descriptive_fields:
+            if field in row.index and clean_text(row.get(field)):
+                quality += 1.0
+
+        metric_groups = [
+            ["signal_score"],
+            ["signal_confidence"],
+            ["ph_votes", "product_hunt_votes", "votes_count"],
+            ["ph_comments", "product_hunt_comments", "comments_count"],
+            ["github_total_stars", "github_stars", "stars"],
+            ["github_followers", "followers"],
+            ["github_public_repos", "public_repos", "repo_count"],
+            ["github_total_forks", "github_forks", "forks"],
+        ]
+
+        for aliases in metric_groups:
+            if first_number(row, aliases, 0) > 0:
+                quality += 1.5
+
+        return quality
+
+    def best_match(company_name: str) -> pd.Series | None:
+        candidates: list[pd.Series] = []
+
+        for data in [master, graph, yc_data]:
+            candidates.extend(
+                candidate_rows(
+                    data,
+                    company_name,
+                )
             )
 
-        l_col, r_col = st.columns(2)
-        with l_col:
-            render_company(row1)
-        with r_col:
-            render_company(row2)
+        if not candidates:
+            return None
 
-        section_header("Signal comparison", "Longer bars indicate stronger observable traction in the selected database.")
-        metrics = [
-            ("Product Hunt votes", ["ph_votes", "product_hunt_votes", "votes_count", "votes"]),
-            ("Product Hunt comments", ["ph_comments", "product_hunt_comments", "comments_count", "comments"]),
-            ("GitHub stars", ["github_total_stars", "github_stars", "stars"]),
-            ("GitHub followers", ["github_followers", "followers"]),
-            ("GitHub repositories", ["github_public_repos", "public_repos", "repositories", "repo_count"]),
-        ]
-        for label, columns in metrics:
-            v1, v2 = company_signal(row1, columns), company_signal(row2, columns)
-            maximum = max(v1, v2, 1)
-            st.markdown(f"**{label}**")
-            a, b = st.columns(2)
-            with a:
-                progress_bar(clean_text(first_present(row1, ["name", "company_name", "startup_name"]), startup_1), v1 / maximum * 100)
-                st.caption(f"Raw value: {v1:,.0f}")
-            with b:
-                progress_bar(clean_text(first_present(row2, ["name", "company_name", "startup_name"]), startup_2), v2 / maximum * 100)
-                st.caption(f"Raw value: {v2:,.0f}")
+        return max(
+            candidates,
+            key=row_quality,
+        )
+
+    row1 = best_match(startup_1)
+    row2 = best_match(startup_2)
+
+    if row1 is None or row2 is None:
+        missing = startup_1 if row1 is None else startup_2
+        st.warning(
+            f"No match was found for {missing}. Try a shorter company name."
+        )
+        return
+
+    def build_company_comparison(row: pd.Series) -> dict[str, Any]:
+        name = clean_text(
+            first_present(
+                row,
+                [
+                    "name",
+                    "company_name",
+                    "startup_name",
+                    "organization_name",
+                ],
+            ),
+            "Unknown company",
+        )
+
+        unified = build_unified_vero_result(name)
+        merged_row = unified["row"]
+        profile = unified["profile"]
+        vero = unified["vero"]
+
+        industry = (
+            profile.primary_industry
+            or resolve_row_industry(merged_row)[0]
+        )
+
+        business_model = (
+            profile.primary_business_model
+            or clean_text(
+                first_present(
+                    merged_row,
+                    [
+                        "business_model",
+                        "revenue_model",
+                        "business_model_inferred",
+                    ],
+                ),
+                "Insufficient evidence",
+            )
+        )
+
+        source = clean_text(
+            first_present(
+                merged_row,
+                [
+                    "source",
+                    "data_source",
+                    "platform",
+                    "dataset",
+                ],
+            ),
+            "VERO database",
+        )
+
+        observations = int(
+            safe_number(
+                merged_row.get("signal_observations"),
+                0,
+            )
+        )
+
+        return {
+            "row": merged_row,
+            "name": name,
+            "industry": industry,
+            "industry_method": "Unified VERO pipeline",
+            "industry_confidence": safe_number(
+                profile.industry_confidence
+            ),
+            "business_model": business_model,
+            "source": source,
+            "signal_score": safe_number(vero.overall_score),
+            "signal_confidence": safe_number(
+                unified["evidence_confidence"]
+            ),
+            "profile_score": safe_number(vero.overall_score),
+            "external_score": safe_number(
+                merged_row.get("signal_external_score"),
+                0,
+            ),
+            "observations": observations,
+            "profile": profile,
+            "vero": vero,
+            "business_quality": safe_number(
+                profile.overall_business_quality_score
+            ),
+            "moat": safe_number(
+                profile.overall_moat_score
+            ),
+            "risk": safe_number(
+                profile.overall_risk_score
+            ),
+            "strategic_signal": safe_number(
+                profile.overall_signal_score
+            ),
+            "evidence_mode": unified["evidence_mode"],
+            "evidence_text": unified["evidence_text"],
+        }
+
+    company1 = build_company_comparison(row1)
+    company2 = build_company_comparison(row2)
+
+    def render_company_summary(company: dict[str, Any]) -> None:
+        vero = company["vero"]
+
+        st.markdown(
+            f"""
+            <div class="vero-card">
+                <span class="vero-badge">{safe_html(company["source"])}</span>
+                <div style="font-size:1.8rem;font-weight:850;margin-top:.8rem;">
+                    {safe_html(company["name"])}
+                </div>
+                <div class="vero-kpi-sub" style="margin-top:.25rem;">
+                    {safe_html(company["industry"])}
+                </div>
+                <div class="vero-kpi-sub">
+                    {safe_html(company["business_model"])}
+                </div>
+                <div style="display:flex;align-items:end;justify-content:space-between;margin-top:1rem;">
+                    <div>
+                        <div class="vero-kpi-label">VERO SCORE</div>
+                        <div class="vero-kpi-value">{company["signal_score"]:.0f}</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div class="vero-kpi-label">CONFIDENCE</div>
+                        <div style="font-size:1.25rem;font-weight:850;">
+                            {company["signal_confidence"]:.0f}%
+                        </div>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if vero is not None:
+            st.caption(
+                f"VERO investment score: "
+                f"{vero.overall_score:.1f}/100 · "
+                f"{vero.investment_grade}"
+            )
+
+    left_summary, right_summary = st.columns(2)
+
+    with left_summary:
+        render_company_summary(company1)
+
+    with right_summary:
+        render_company_summary(company2)
+
+    section_header(
+        "VERO score comparison",
+        "These metrics use VERO's profile evidence and intelligence engines, so the comparison still works when Product Hunt or GitHub data is unavailable.",
+    )
+
+    def compare_metric(
+        label: str,
+        value1: float,
+        value2: float,
+        maximum: float,
+        suffix: str = "",
+        higher_is_better: bool = True,
+    ) -> None:
+        value1 = max(0.0, value1)
+        value2 = max(0.0, value2)
+
+        st.markdown(f"**{label}**")
+        a, b = st.columns(2)
+
+        if higher_is_better:
+            pct1 = (
+                value1 / maximum * 100
+                if maximum
+                else 0
+            )
+            pct2 = (
+                value2 / maximum * 100
+                if maximum
+                else 0
+            )
+        else:
+            pct1 = (
+                (maximum - value1) / maximum * 100
+                if maximum
+                else 0
+            )
+            pct2 = (
+                (maximum - value2) / maximum * 100
+                if maximum
+                else 0
+            )
+
+        with a:
+            progress_bar(
+                company1["name"],
+                pct1,
+            )
+            st.caption(
+                f"{value1:.1f}{suffix}"
+            )
+
+        with b:
+            progress_bar(
+                company2["name"],
+                pct2,
+            )
+            st.caption(
+                f"{value2:.1f}{suffix}"
+            )
+
+    compare_metric(
+        "Overall VERO score",
+        company1["signal_score"],
+        company2["signal_score"],
+        100,
+        "/100",
+    )
+
+    compare_metric(
+        "Evidence confidence",
+        company1["signal_confidence"],
+        company2["signal_confidence"],
+        100,
+        "%",
+    )
+
+
+    if (
+        company1["profile"] is not None
+        or company2["profile"] is not None
+    ):
+        section_header(
+            "Business intelligence comparison",
+            "Scores inferred from each company's available description, classifications, and metadata. Low-confidence components should be read as incomplete evidence, not definitive weakness.",
+        )
+
+        compare_metric(
+            "Business quality",
+            company1["business_quality"],
+            company2["business_quality"],
+            10,
+            "/10",
+        )
+
+        compare_metric(
+            "Moat strength (evidence-backed)",
+            company1["moat"],
+            company2["moat"],
+            10,
+            "/10",
+        )
+
+        compare_metric(
+            "Strategic signal engine",
+            company1["strategic_signal"],
+            company2["strategic_signal"],
+            100,
+            "/100",
+        )
+
+        # Risk is shown as raw risk, but the bar is inverted so a longer bar
+        # means the company has the more favorable lower-risk profile.
+        compare_metric(
+            "Risk position",
+            company1["risk"],
+            company2["risk"],
+            10,
+            "/10 risk",
+            higher_is_better=False,
+        )
+
+        st.markdown("### What actually differs")
+
+        differences: list[str] = []
+
+        bq_gap = company1["business_quality"] - company2["business_quality"]
+        if abs(bq_gap) >= 0.4:
+            leader = company1["name"] if bq_gap > 0 else company2["name"]
+            differences.append(
+                f"**{leader}** has the stronger business-quality profile."
+            )
+
+        moat_gap = company1["moat"] - company2["moat"]
+        moat_conf_1 = safe_number(
+            getattr(company1["profile"], "moat_confidence", 0)
+        )
+        moat_conf_2 = safe_number(
+            getattr(company2["profile"], "moat_confidence", 0)
+        )
+
+        if max(moat_conf_1, moat_conf_2) < 0.40:
+            differences.append(
+                "Moat comparison is **low confidence** for both companies, so the "
+                "current moat values should be treated as evidence-limited rather "
+                "than definitive."
+            )
+        elif abs(moat_gap) >= 0.4:
+            leader = company1["name"] if moat_gap > 0 else company2["name"]
+            differences.append(
+                f"**{leader}** currently has the stronger supported moat evidence."
+            )
+
+        signal_gap = company1["strategic_signal"] - company2["strategic_signal"]
+        if abs(signal_gap) >= 4:
+            leader = company1["name"] if signal_gap > 0 else company2["name"]
+            differences.append(
+                f"**{leader}** has the stronger strategic-signal profile."
+            )
+
+        risk_gap = company1["risk"] - company2["risk"]
+        if abs(risk_gap) >= 0.4:
+            safer = company1["name"] if risk_gap < 0 else company2["name"]
+            differences.append(
+                f"**{safer}** currently has the more favorable lower-risk profile."
+            )
+
+        if company1["business_model"] != company2["business_model"]:
+            differences.append(
+                f"The companies use different business models: "
+                f"**{company1['name']} — {company1['business_model']}** vs "
+                f"**{company2['name']} — {company2['business_model']}**."
+            )
+
+        if company1["industry"] != company2["industry"]:
+            differences.append(
+                f"They operate in different primary industries: "
+                f"**{company1['name']} — {company1['industry']}** vs "
+                f"**{company2['name']} — {company2['industry']}**."
+            )
+
+        if not differences:
+            differences.append(
+                "VERO does not currently see a large enough evidence-backed gap "
+                "to call one company clearly stronger across these components."
+            )
+
+        for item in differences:
+            st.markdown(f"- {item}")
+
+    section_header(
+        "Observable external traction",
+        "Only metrics with at least one real observation are shown. Missing metrics are treated as unknown rather than as zero traction.",
+    )
+
+    external_metrics = [
+        (
+            "Product Hunt votes",
+            ["ph_votes", "product_hunt_votes", "votes_count", "votes"],
+        ),
+        (
+            "Product Hunt comments",
+            ["ph_comments", "product_hunt_comments", "comments_count", "comments"],
+        ),
+        (
+            "GitHub stars",
+            ["github_total_stars", "github_stars", "stars"],
+        ),
+        (
+            "GitHub followers",
+            ["github_followers", "followers"],
+        ),
+        (
+            "GitHub repositories",
+            ["github_public_repos", "public_repos", "repositories", "repo_count"],
+        ),
+        (
+            "GitHub forks",
+            ["github_total_forks", "github_forks", "forks"],
+        ),
+    ]
+
+    displayed_external = 0
+
+    for label, aliases in external_metrics:
+        value1 = company_signal(
+            company1["row"],
+            aliases,
+        )
+        value2 = company_signal(
+            company2["row"],
+            aliases,
+        )
+
+        if value1 <= 0 and value2 <= 0:
+            continue
+
+        displayed_external += 1
+        maximum = max(
+            value1,
+            value2,
+            1,
+        )
+
+        st.markdown(f"**{label}**")
+        a, b = st.columns(2)
+
+        with a:
+            progress_bar(
+                company1["name"],
+                value1 / maximum * 100,
+            )
+            st.caption(
+                f"Observed value: {value1:,.0f}"
+                if value1 > 0
+                else "No stored observation"
+            )
+
+        with b:
+            progress_bar(
+                company2["name"],
+                value2 / maximum * 100,
+            )
+            st.caption(
+                f"Observed value: {value2:,.0f}"
+                if value2 > 0
+                else "No stored observation"
+            )
+
+    if displayed_external == 0:
+        st.info(
+            "VERO does not currently have Product Hunt or GitHub observations "
+            "for either of these company records. The comparison above therefore "
+            "uses profile evidence and VERO intelligence instead of displaying "
+            "misleading rows of zeros."
+        )
+
+    section_header(
+        "Profile differences",
+        "A quick qualitative view of where the companies differ.",
+    )
+
+    profile_left, profile_right = st.columns(2)
+
+    def render_profile_differences(
+        company: dict[str, Any],
+    ) -> None:
+        st.markdown(
+            f"### {company['name']}"
+        )
+        st.markdown(
+            f"**Industry:** {company['industry']}"
+        )
+        st.markdown(
+            f"**Business model:** "
+            f"{company['business_model']}"
+        )
+
+        profile = company["profile"]
+
+        if profile is None:
+            st.caption(
+                "Insufficient evidence for a full intelligence profile."
+            )
+            return
+
+        st.markdown(
+            f"**Strongest moat:** "
+            f"{str(profile.strongest_moat or 'Not detected').replace('_', ' ').title()}"
+        )
+        st.markdown(
+            f"**Strongest business quality:** "
+            f"{str(profile.strongest_business_quality or 'Not detected').replace('_', ' ').title()}"
+        )
+
+        if profile.largest_risks:
+            readable_risks = ", ".join(
+                risk.replace("_", " ").title()
+                for risk in profile.largest_risks[:3]
+            )
+            st.markdown(
+                f"**Largest risks:** {readable_risks}"
+            )
+        else:
+            st.markdown(
+                "**Largest risks:** No major risk threshold triggered"
+            )
+
+        if profile.competitors:
+            st.markdown(
+                "**Likely competitors:** "
+                + ", ".join(
+                    profile.competitors[:5]
+                )
+            )
+
+        with st.expander("View comparison evidence"):
+            st.code(
+                enrich_comparison_evidence(
+                    company["name"],
+                    company["row"],
+                    build_row_classification_text(company["row"]),
+                ),
+                language="text",
+            )
+
+    with profile_left:
+        render_profile_differences(
+            company1
+        )
+
+    with profile_right:
+        render_profile_differences(
+            company2
+        )
+
+    st.warning(
+        "A missing external metric means VERO has no stored observation for "
+        "that metric. It does not mean the company has zero real-world traction."
+    )
+
+    st.caption(
+        "Moat scoring distinguishes direct company evidence from VERO-inferred "
+        "structural evidence. Inferred marketplace, integration, or network-effect "
+        "clues receive partial weight and cannot by themselves create a near-perfect moat."
+    )
+
 
 
 def render_database() -> None:
     page_header(
-        "Company graph",
+        "Startup database",
         "Explore the startup database.",
-        "Search, filter, and inspect the unified company dataset without digging through raw CSV files.",
+        "Search and inspect VERO's cleaned company records without loading every intelligence engine at once.",
     )
-    master = load_graph_data()
-    if master.empty:
-        st.warning("Outputs/final_startup_graph.csv is not available.")
+
+    master = load_master_data()
+    graph = load_graph_data()
+
+    sources = [
+        data
+        for data in [master, graph, yc_data]
+        if not data.empty
+    ]
+
+    if not sources:
+        st.warning("The startup database is unavailable.")
         return
 
-    f1, f2, f3 = st.columns([1.5, 1, 1])
-    with f1:
-        search = st.text_input("Search startups", placeholder="Name, description, industry, or source")
-    with f2:
-        source_values = sorted(master.get("source", pd.Series(dtype=str)).fillna("Unknown").astype(str).unique().tolist())
-        source_filter = st.selectbox("Source", ["All"] + source_values)
-    with f3:
-        industry_values = sorted(master.get("industry", pd.Series(dtype=str)).fillna("Unknown").astype(str).unique().tolist())
-        industry_filter = st.selectbox("Industry", ["All"] + industry_values)
+    combined = pd.concat(
+        sources,
+        ignore_index=True,
+        sort=False,
+    )
 
-    filtered = master.copy()
-    if source_filter != "All" and "source" in filtered.columns:
-        filtered = filtered[filtered["source"].astype(str) == source_filter]
-    if industry_filter != "All" and "industry" in filtered.columns:
-        filtered = filtered[filtered["industry"].astype(str) == industry_filter]
-    if search:
-        searchable = pd.Series("", index=filtered.index)
-        for column in ["name", "description_clean", "industry", "source"]:
-            if column in filtered.columns:
-                searchable = searchable + " " + filtered[column].fillna("").astype(str)
-        mask = pd.Series(True, index=filtered.index)
-        for word in search.lower().split():
-            mask &= searchable.str.lower().str.contains(re.escape(word), na=False)
-        filtered = filtered[mask]
-    if "signal_score" in filtered.columns:
-        filtered = filtered.sort_values("signal_score", ascending=False)
+    name_column = next(
+        (
+            column
+            for column in [
+                "name",
+                "company_name",
+                "startup_name",
+                "organization_name",
+            ]
+            if column in combined.columns
+        ),
+        None,
+    )
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        kpi_card("Matching startups", f"{len(filtered):,}", "After the current filters")
-    with c2:
-        kpi_card("Total database", f"{len(master):,}", "All indexed records")
-    with c3:
-        avg = filtered["signal_score"].mean() if "signal_score" in filtered.columns and not filtered.empty else 0
-        kpi_card("Average signal score", f"{avg:.1f}", "For the filtered results")
+    if name_column is None:
+        st.warning("No company-name column was found in the database.")
+        return
 
-    columns = [
-        "startup_id", "name", "source", "industry", "business_type_inferred",
-        "business_model_inferred", "industry_classification_method", "website_clean", "ph_votes",
-        "ph_comments", "github_total_stars", "github_followers", "signal_score",
-    ]
-    available = [column for column in columns if column in filtered.columns]
-    st.dataframe(filtered[available].head(500), use_container_width=True, hide_index=True)
+    combined["_display_name"] = (
+        combined[name_column]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
+
+    malformed_name = (
+        combined["_display_name"].str.len().gt(90)
+        | combined["_display_name"].str.contains(
+            r"[.!?]\s",
+            regex=True,
+            na=False,
+        )
+        | combined["_display_name"].str.lower().isin(
+            {"", "nan", "none", "null", "unknown"}
+        )
+    )
+
+    database = combined.loc[~malformed_name].copy()
+    database["_normalized_name"] = database["_display_name"].map(
+        _normalize_company_lookup_name
+    )
+
+    # Lightweight dedupe: keep the first useful row per normalized company name.
+    # Deep merging happens only when a company is actually opened/scored.
+    database = database.drop_duplicates(
+        subset=["_normalized_name"],
+        keep="first",
+    ).copy()
+
+    search_col, source_col = st.columns([2.2, 1.2])
+
+    with search_col:
+        search_query = st.text_input(
+            "Search startups",
+            "",
+            key="database_search",
+            placeholder="Search Airbnb, Stripe, FlatX...",
+        )
+
+    source_values = []
+    if "source" in database.columns:
+        source_values = sorted(
+            {
+                clean_text(value)
+                for value in database["source"].tolist()
+                if clean_text(value)
+            },
+            key=str.lower,
+        )
+
+    with source_col:
+        selected_source = st.selectbox(
+            "Source",
+            ["All"] + source_values,
+            key="database_source_filter",
+        )
+
+    filtered = database.copy()
+
+    if search_query.strip():
+        query_normalized = _normalize_company_lookup_name(search_query)
+        query_lower = search_query.strip().lower()
+
+        exact_mask = filtered["_normalized_name"].eq(query_normalized)
+
+        if exact_mask.any():
+            filtered = filtered.loc[exact_mask].copy()
+        else:
+            filtered = filtered[
+                filtered["_display_name"]
+                .str.lower()
+                .str.contains(
+                    re.escape(query_lower),
+                    na=False,
+                )
+            ].copy()
+
+    if selected_source != "All" and "source" in filtered.columns:
+        filtered = filtered[
+            filtered["source"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .eq(selected_source)
+        ].copy()
+
+    # Critical performance guard:
+    # never run the full intelligence pipeline across the whole database.
+    result_limit = 100
+
+    if not search_query.strip():
+        st.info(
+            "Showing the first 100 companies. Search for a company to load "
+            "its unified VERO score and classifications."
+        )
+        visible = filtered.head(result_limit).copy()
+        deep_score = False
+    else:
+        if len(filtered) > result_limit:
+            st.info(
+                f"{len(filtered):,} companies matched. Showing the first "
+                f"{result_limit} results for performance."
+            )
+        visible = filtered.head(result_limit).copy()
+        deep_score = True
+
+    rows: list[dict[str, Any]] = []
+
+    for _, row in visible.iterrows():
+        company_name = clean_text(row.get("_display_name"), "Unknown company")
+
+        industry, _, _ = resolve_row_industry(
+            row,
+            fallback="Insufficient evidence",
+        )
+
+        business_type = clean_text(
+            first_present(
+                row,
+                [
+                    "business_type",
+                    "Business_Type",
+                    "business_type_inferred",
+                ],
+            )
+        ) or "Insufficient evidence"
+
+        business_model = clean_text(
+            first_present(
+                row,
+                [
+                    "business_model",
+                    "revenue_model",
+                    "business_model_inferred",
+                ],
+            )
+        ) or "Insufficient evidence"
+
+        source = clean_text(
+            first_present(
+                row,
+                ["source", "dataset", "platform"],
+            ),
+            "VERO database",
+        )
+
+        website = clean_text(
+            first_present(
+                row,
+                ["website_clean", "website", "url"],
+            )
+        ) or "Not observed"
+
+        # Only deep-score actual search results. Browsing the first 100 stays fast.
+        if deep_score:
+            try:
+                (
+                    profile_dict,
+                    vero_dict,
+                    confidence,
+                    _mode,
+                    _evidence,
+                ) = get_cached_database_vero_objects(company_name)
+
+                score = safe_number(
+                    vero_dict.get("overall_score"),
+                    0,
+                )
+
+                industry = clean_text(
+                    profile_dict.get("industry", {}).get("primary"),
+                    industry,
+                )
+
+                business_model = clean_text(
+                    profile_dict.get("business_model", {}).get("primary"),
+                    business_model,
+                )
+            except Exception:
+                score = safe_number(row.get("signal_score"), 0)
+                confidence = safe_number(row.get("signal_confidence"), 0)
+        else:
+            score = safe_number(row.get("signal_score"), 0)
+            confidence = safe_number(row.get("signal_confidence"), 0)
+
+        rows.append(
+            {
+                "Company": company_name,
+                "Industry": industry,
+                "Business Type": business_type,
+                "Business Model": business_model,
+                "Source": source,
+                "VERO Score": round(score, 1),
+                "Confidence": round(confidence, 0),
+                "Website": website,
+            }
+        )
+
+    view = pd.DataFrame(rows)
+
+    if view.empty:
+        st.info("No companies match the current filters.")
+        return
+
+    a, b, c = st.columns(3)
+
+    with a:
+        kpi_card(
+            "Matching startups",
+            f"{len(filtered):,}",
+            "After the current filters",
+        )
+
+    with b:
+        kpi_card(
+            "Total database",
+            f"{len(database):,}",
+            "Unique cleaned company records",
+        )
+
+    with c:
+        avg = pd.to_numeric(
+            view["VERO Score"],
+            errors="coerce",
+        ).mean()
+        kpi_card(
+            "Average VERO score",
+            f"{safe_number(avg):.1f}",
+            "For currently displayed rows",
+        )
+
+    sort_col, direction_col = st.columns([2, 1])
+
+    with sort_col:
+        sort_by = st.selectbox(
+            "Sort by",
+            [
+                "Company",
+                "VERO Score",
+                "Confidence",
+                "Industry",
+            ],
+            key="database_sort_by",
+        )
+
+    with direction_col:
+        descending = st.checkbox(
+            "Descending",
+            value=sort_by in {"VERO Score", "Confidence"},
+            key="database_sort_desc",
+        )
+
+    view = view.sort_values(
+        sort_by,
+        ascending=not descending,
+        key=(
+            (lambda series: series.str.lower())
+            if sort_by in {"Company", "Industry"}
+            else None
+        ),
+    )
+
+    st.dataframe(
+        view,
+        width="stretch",
+        hide_index=True,
+        column_config={
+            "VERO Score": st.column_config.NumberColumn(
+                "VERO Score",
+                format="%.1f",
+            ),
+            "Confidence": st.column_config.NumberColumn(
+                "Confidence",
+                format="%.0f%%",
+            ),
+        },
+    )
 
 
 def render_profile() -> None:
     page_header(
         "Company intelligence",
         "Open a startup profile.",
-        "Search VERO's company graph for a clean overview of traction, identity, and available evidence.",
+        "Search VERO's database for one clean, consistent company profile.",
     )
 
     graph = load_graph_data()
-    if graph.empty or "name" not in graph.columns:
+    master = load_master_data()
+
+    if graph.empty and master.empty and yc_data.empty:
         st.warning("The startup profile database is unavailable.")
         return
 
-    graph = graph[graph["name"].apply(valid_company_name)].copy()
-    graph["name"] = graph["name"].astype(str).str.strip()
+    def available_names(data: pd.DataFrame) -> list[str]:
+        if data.empty:
+            return []
+
+        column = next(
+            (
+                candidate
+                for candidate in [
+                    "name",
+                    "company_name",
+                    "startup_name",
+                    "organization_name",
+                ]
+                if candidate in data.columns
+            ),
+            None,
+        )
+
+        if column is None:
+            return []
+
+        return [
+            name
+            for name in (
+                data[column]
+                .dropna()
+                .astype(str)
+                .str.strip()
+                .tolist()
+            )
+            if valid_company_name(name)
+        ]
+
+    unique_names = sorted(
+        set(
+            available_names(graph)
+            + available_names(master)
+            + available_names(yc_data)
+        ),
+        key=str.lower,
+    )
+
+    if not unique_names:
+        st.warning("No valid company names are available.")
+        return
 
     search_col, count_col = st.columns([4, 1])
+
     with search_col:
-        default_query = clean_text(st.session_state.get("profile_query"), "Airbnb")
+        default_query = clean_text(
+            st.session_state.get("profile_query"),
+            "Airbnb",
+        )
+
         query = st.text_input(
             "Search company",
             value=default_query,
             placeholder="Search Airbnb, Stripe, FlatX...",
+            key="profile_search_query",
         )
+
     with count_col:
-        st.metric("Companies", f"{len(graph):,}")
+        st.metric(
+            "Companies",
+            f"{len(unique_names):,}",
+        )
 
     if query.strip():
-        exact = graph["name"].str.lower().eq(query.strip().lower())
-        contains = graph["name"].str.lower().str.contains(
-            re.escape(query.strip().lower()), na=False
-        )
-        matches = pd.concat([graph[exact], graph[contains & ~exact]]).drop_duplicates()
-    else:
-        matches = graph.sort_values("signal_score", ascending=False).head(100)
+        query_lower = query.strip().lower()
 
-    if matches.empty:
+        exact = [
+            name
+            for name in unique_names
+            if name.lower() == query_lower
+        ]
+
+        partial = [
+            name
+            for name in unique_names
+            if query_lower in name.lower()
+            and name.lower() != query_lower
+        ]
+
+        options = exact + partial
+    else:
+        options = unique_names[:100]
+
+    if not options:
         st.warning("No startup found. Try a shorter company name.")
         return
 
     selected_name = st.selectbox(
         "Select startup",
-        matches["name"].head(100).tolist(),
+        options[:100],
         key="profile_company_selector",
     )
-    row = matches[matches["name"].eq(selected_name)].iloc[0]
 
-    company_name = clean_text(row.get("name"), "Unnamed company")
-    source = clean_text(first_present(row, ["source", "dataset"]), "VERO database")
-    industry = clean_text(
-        first_present(row, ["industry_clean", "industry", "industry_inferred", "category", "vertical"]),
-        "Industry not classified",
-    )
-    description = clean_text(
-        first_present(row, ["description_clean", "description", "short_description", "tagline"]),
-        "VERO does not yet have a company description for this record.",
-    )
-    website = clean_text(first_present(row, ["website_clean", "website", "url"]))
-    location = clean_text(first_present(row, ["location", "city", "country"]), "Location unavailable")
-    business_type = clean_text(first_present(row, ["business_type", "Business_Type", "business_type_inferred"]), "Audience not classified")
-    revenue_model = clean_text(first_present(row, ["business_model", "revenue_model", "business_model_inferred"]), "Revenue model not classified")
-    ai_classification = clean_text(first_present(row, ["AI_Company", "ai_company", "ai_classification_inferred"]), "Unknown")
-    classification_method = clean_text(row.get("industry_classification_method"), "Source data")
-    classification_confidence = safe_number(row.get("industry_classification_confidence"), 0)
+    try:
+        unified = build_unified_vero_result(
+            selected_name
+        )
+    except Exception as exc:
+        st.warning(
+            f"VERO could not build this company profile: {exc}"
+        )
+        return
 
-    score = safe_number(row.get("signal_score"))
-    confidence = safe_number(row.get("signal_confidence"), 20)
-    basis = clean_text(row.get("signal_basis"), "Available evidence")
+    row = unified["row"]
+    profile = unified["profile"]
+    vero = unified["vero"]
+
+    if row.empty:
+        st.warning(
+            "VERO could not assemble a usable company record."
+        )
+        return
+
+    company_name = clean_text(
+        row.get("name"),
+        selected_name,
+    )
+
+    source = clean_text(
+        first_present(
+            row,
+            [
+                "source",
+                "dataset",
+                "program_names",
+            ],
+        ),
+        "VERO database",
+    )
+
+    # Use the same classification resolver used elsewhere instead of exposing
+    # raw hierarchical labels such as "Consumer -> Travel ...".
+    industry, industry_method, industry_confidence = resolve_row_industry(
+        row,
+        fallback=profile.primary_industry or "Insufficient evidence",
+    )
+
+    if (
+        profile.primary_industry
+        and (
+            "->" in industry
+            or ">" in industry
+            or industry.lower()
+            in {
+                "industry unavailable",
+                "industry not classified",
+                "unclassified",
+            }
+        )
+    ):
+        industry = profile.primary_industry
+        industry_method = "VERO intelligence engine"
+        industry_confidence = safe_number(
+            profile.industry_confidence
+        )
+
+    subindustry = (
+        profile.primary_subindustry
+        or clean_text(row.get("subindustry"))
+        or "Insufficient evidence"
+    )
+
+    business_model = (
+        profile.primary_business_model
+        or clean_text(
+            first_present(
+                row,
+                [
+                    "business_model",
+                    "revenue_model",
+                    "business_model_inferred",
+                ],
+            )
+        )
+        or "Insufficient evidence"
+    )
+
+    business_type = clean_text(
+        first_present(
+            row,
+            [
+                "business_type",
+                "Business_Type",
+                "business_type_inferred",
+            ],
+        )
+    )
+
+    if not business_type:
+        business_type = classify_business_type(
+            unified["evidence_text"]
+        )
+
+    ai_classification = clean_text(
+        first_present(
+            row,
+            [
+                "AI_Company",
+                "ai_company",
+                "ai_classification_inferred",
+            ],
+        )
+    )
+
+    if not ai_classification:
+        ai_classification = classify_ai(
+            unified["evidence_text"]
+        )
+
+    location_parts: list[str] = []
+
+    for column in [
+        "location",
+        "city",
+        "country",
+    ]:
+        value = clean_text(
+            row.get(column)
+        )
+        if value and value not in location_parts:
+            location_parts.append(value)
+
+    location = (
+        ", ".join(location_parts)
+        if location_parts
+        else "Location not observed"
+    )
+
+    website = clean_text(
+        first_present(
+            row,
+            [
+                "website_clean",
+                "website",
+                "url",
+            ],
+        )
+    )
+
+    raw_description = get_database_description(
+        company_name
+    )
+
+    if not raw_description:
+        raw_description = clean_text(
+            first_present(
+                row,
+                [
+                    "description_clean",
+                    "description",
+                    "short_description",
+                    "long_description",
+                    "one_liner",
+                    "tagline",
+                ],
+            )
+        )
+
+    if raw_description:
+        description = raw_description
+    else:
+        description = (
+            f"{company_name} is classified by VERO as "
+            f"{subindustry} within {industry}, using a "
+            f"{business_model} business model."
+            if industry != "Insufficient evidence"
+            else
+            "VERO does not currently have enough descriptive evidence "
+            "to create a reliable company summary."
+        )
+
+    founded = clean_text(
+        first_present(
+            row,
+            [
+                "founded_year",
+                "year_founded",
+                "batch",
+                "yc_batch",
+            ],
+        ),
+        "Not observed",
+    )
+
+    hiring_raw = clean_text(
+        first_present(
+            row,
+            [
+                "isHiring",
+                "is_hiring",
+                "hiring",
+                "hiring_binary",
+            ],
+        )
+    ).lower()
+
+    if hiring_raw in {"true", "yes", "1"}:
+        hiring = "Yes"
+    elif hiring_raw in {"false", "no", "0"}:
+        hiring = "No"
+    else:
+        hiring = "Not observed"
+
+    score = safe_number(
+        vero.overall_score,
+        50.0,
+    )
+
+    evidence_confidence = safe_number(
+        unified["evidence_confidence"],
+        0.0,
+    )
+
+    evidence_mode = clean_text(
+        unified["evidence_mode"],
+        "Database",
+    )
+
+    merged_count = int(
+        safe_number(
+            row.get("_merged_record_count"),
+            1,
+        )
+    )
 
     header_left, header_right = st.columns([3, 1])
+
     with header_left:
         st.markdown(
             f"""
-            <div class="vero-card" style="min-height:230px;">
+            <div class="vero-card" style="min-height:250px;">
                 <span class="vero-badge">{safe_html(source)}</span>
-                <div style="font-size:2.35rem;font-weight:900;margin-top:.85rem;line-height:1.05;">{safe_html(company_name)}</div>
-                <div class="vero-kpi-sub" style="font-size:1rem;margin-top:.55rem;">{safe_html(industry)} · {safe_html(location)}</div>
-                <div style="margin-top:1rem;line-height:1.7;max-width:900px;">{safe_html(description)}</div>
+                <div style="font-size:2.35rem;font-weight:900;margin-top:.85rem;line-height:1.05;">
+                    {safe_html(company_name)}
+                </div>
+                <div class="vero-kpi-sub" style="font-size:1rem;margin-top:.55rem;">
+                    {safe_html(industry)} · {safe_html(location)}
+                </div>
+                <div style="margin-top:1rem;line-height:1.7;max-width:900px;">
+                    {safe_html(description)}
+                </div>
+                <div class="vero-kpi-sub" style="margin-top:1rem;">
+                    Evidence mode: {safe_html(evidence_mode)} ·
+                    merged from {merged_count} matching record(s)
+                </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
+
         if website:
-            st.link_button("Visit company website", website, use_container_width=False)
+            st.link_button(
+                "Visit company website",
+                website,
+                width="content",
+            )
 
     with header_right:
         st.markdown(
             f"""
-            <div class="vero-card" style="text-align:center;min-height:230px;display:flex;flex-direction:column;justify-content:center;">
-                <div class="vero-kpi-label">VERO SIGNAL SCORE</div>
-                <div style="font-size:3.6rem;font-weight:950;line-height:1;margin:.55rem 0;">{score:.0f}</div>
+            <div class="vero-card" style="text-align:center;min-height:250px;display:flex;flex-direction:column;justify-content:center;">
+                <div class="vero-kpi-label">VERO SCORE</div>
+                <div style="font-size:3.6rem;font-weight:950;line-height:1;margin:.55rem 0;">
+                    {score:.0f}
+                </div>
                 <div class="vero-kpi-sub">out of 100</div>
-                <div style="margin-top:.9rem;font-weight:750;">{safe_html(basis)}</div>
-                <div class="vero-kpi-sub">{confidence:.0f}% data confidence</div>
+                <div style="margin-top:.9rem;font-weight:750;">
+                    {safe_html(vero.investment_grade)}
+                </div>
+                <div class="vero-kpi-sub">
+                    {evidence_confidence:.0f}% evidence confidence
+                </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
     section_header(
-        "Signal snapshot",
-        "Observed traction and profile evidence currently available in VERO.",
+        "Observed external signals",
+        "Only values actually stored in VERO are shown. Missing data is not treated as zero traction.",
     )
-    metrics = [
-        ("Product Hunt votes", first_number(row, ["ph_votes", "product_hunt_votes", "votes_count"]), "Community demand"),
-        ("GitHub stars", first_number(row, ["github_total_stars", "github_stars", "stars"]), "Developer interest"),
-        ("GitHub followers", first_number(row, ["github_followers", "followers"]), "Organization reach"),
-        ("Public repositories", first_number(row, ["github_public_repos", "public_repos", "repo_count"]), "Open-source activity"),
-    ]
-    cols = st.columns(4)
-    for col, (label, value, subtitle) in zip(cols, metrics):
-        with col:
-            kpi_card(label, f"{value:,.0f}", subtitle)
 
-    profile_tab, classification_tab, evidence_tab, raw_tab = st.tabs(["Company profile", "VERO classifications", "Score explanation", "Raw metadata"])
+    signal_metrics = [
+        (
+            "Product Hunt votes",
+            first_number(
+                row,
+                [
+                    "ph_votes",
+                    "product_hunt_votes",
+                    "votes_count",
+                ],
+                default=float("nan"),
+            ),
+            "Community demand",
+        ),
+        (
+            "GitHub stars",
+            first_number(
+                row,
+                [
+                    "github_total_stars",
+                    "github_stars",
+                    "stars",
+                ],
+                default=float("nan"),
+            ),
+            "Developer interest",
+        ),
+        (
+            "GitHub followers",
+            first_number(
+                row,
+                [
+                    "github_followers",
+                    "followers",
+                ],
+                default=float("nan"),
+            ),
+            "Organization reach",
+        ),
+        (
+            "Public repositories",
+            first_number(
+                row,
+                [
+                    "github_public_repos",
+                    "public_repos",
+                    "repo_count",
+                ],
+                default=float("nan"),
+            ),
+            "Open-source activity",
+        ),
+    ]
+
+    for column, (
+        label,
+        value,
+        subtitle,
+    ) in zip(
+        st.columns(4),
+        signal_metrics,
+    ):
+        with column:
+            display_value = (
+                "Not observed"
+                if pd.isna(value) or value <= 0
+                else f"{value:,.0f}"
+            )
+            kpi_card(
+                label,
+                display_value,
+                subtitle,
+            )
+
+    (
+        profile_tab,
+        classification_tab,
+        intelligence_tab,
+        explanation_tab,
+        raw_tab,
+    ) = st.tabs(
+        [
+            "Company profile",
+            "Classifications",
+            "VERO intelligence",
+            "Score explanation",
+            "Raw metadata",
+        ]
+    )
 
     with profile_tab:
         left, right = st.columns(2)
+
         with left:
-            kpi_card("Industry", industry, classification_method)
-            kpi_card("Customer type", business_type, "B2B, B2C, or mixed")
-            kpi_card("Revenue model", revenue_model, "Detected monetization model")
+            kpi_card(
+                "Industry",
+                industry,
+                (
+                    f"{industry_method} · "
+                    f"{industry_confidence:.0%} confidence"
+                    if industry_confidence
+                    else industry_method
+                ),
+            )
+
+            kpi_card(
+                "Subindustry",
+                subindustry,
+                (
+                    f"{profile.subindustry_confidence:.0%} confidence"
+                    if profile.primary_subindustry
+                    else "Insufficient evidence"
+                ),
+            )
+
+            kpi_card(
+                "Customer type",
+                business_type or "Insufficient evidence",
+                "B2B, B2C, or mixed",
+            )
+
         with right:
-            founded = clean_text(first_present(row, ["founded_year", "year_founded", "batch", "yc_batch"]), "Unavailable")
-            hiring = clean_text(first_present(row, ["isHiring", "is_hiring", "hiring"]), "Unknown")
-            kpi_card("Founded / batch", founded, "Available timeline signal")
-            kpi_card("Hiring", hiring, "Current operating signal")
+            kpi_card(
+                "Business model",
+                business_model,
+                (
+                    f"{profile.business_model_confidence:.0%} confidence"
+                    if profile.primary_business_model
+                    else "Insufficient evidence"
+                ),
+            )
+
+            kpi_card(
+                "Founded / batch",
+                founded,
+                "Stored company timeline data",
+            )
+
+            kpi_card(
+                "Hiring",
+                hiring,
+                "Current stored hiring signal",
+            )
 
     with classification_tab:
-        class_cols = st.columns(3)
-        with class_cols[0]:
-            kpi_card("Industry", industry, f"{classification_method} · {classification_confidence:.0%} confidence" if classification_confidence else classification_method)
-        with class_cols[1]:
-            kpi_card("Customer type", business_type, "Inferred from customers and positioning")
-        with class_cols[2]:
-            kpi_card("Revenue model", revenue_model, f"AI company: {ai_classification}")
+        st.markdown("### Why VERO classified it this way")
 
-        if classification_method == "VERO text inference":
-            st.info("This classification was inferred from the company's name, description, tags, and existing metadata. It is useful for discovery but is not treated as verified source data.")
-        elif classification_method == "Insufficient evidence":
-            st.warning("VERO still lacks enough descriptive evidence to classify this company reliably.")
-        else:
-            st.success("The primary industry came from an existing source record. VERO only filled the missing secondary classifications.")
+        classification_rows = [
+            (
+                "Industry",
+                industry,
+                industry_method,
+                industry_confidence,
+            ),
+            (
+                "Subindustry",
+                subindustry,
+                "VERO subindustry engine",
+                safe_number(
+                    profile.subindustry_confidence
+                ),
+            ),
+            (
+                "Business model",
+                business_model,
+                "VERO business-model engine",
+                safe_number(
+                    profile.business_model_confidence
+                ),
+            ),
+            (
+                "AI company",
+                ai_classification or "Not observed",
+                "Text and metadata classification",
+                0.0,
+            ),
+        ]
 
-    with evidence_tab:
-        external_score = safe_number(row.get("signal_external_score"), 0)
-        profile_score = safe_number(row.get("signal_profile_score"), 0)
-        observations = int(safe_number(row.get("signal_observations"), 0))
+        for label, value, method, confidence in classification_rows:
+            st.markdown(
+                f"**{label}: {value}**"
+            )
+            if confidence:
+                st.caption(
+                    f"{method} · {confidence:.0%} confidence"
+                )
+            else:
+                st.caption(method)
 
-        st.markdown("### Why this score was assigned")
-        st.write(
-            f"VERO currently gives **{company_name}** a signal score of "
-            f"**{score:.1f}/100** with **{confidence:.0f}% confidence**. "
-            "Missing metrics are treated as unknown, not as zero traction."
+        with st.expander(
+            "View evidence used for classification"
+        ):
+            st.code(
+                unified["evidence_text"],
+                language="text",
+            )
+
+    with intelligence_tab:
+        top = st.columns(4)
+
+        business_quality_status = getattr(
+            profile,
+            "business_quality_status",
+            "supported",
+        )
+        moat_status = getattr(
+            profile,
+            "moat_status",
+            "supported",
+        )
+        risk_status = getattr(
+            profile,
+            "risk_status",
+            "supported",
         )
 
-        explain_cols = st.columns(3)
-        with explain_cols[0]:
-            kpi_card("External evidence", f"{external_score:.1f}/100" if observations else "Not observed", f"{observations} measured traction signals")
-        with explain_cols[1]:
-            kpi_card("Profile evidence", f"{profile_score:.1f}/100", "Description, source, hiring, and completeness")
-        with explain_cols[2]:
-            kpi_card("Confidence", f"{confidence:.0f}%", basis)
-
-        progress_bar("Final signal score", score)
-        progress_bar("Data confidence", confidence)
-
-        reasons = []
-        ph_votes_value = first_number(row, ["ph_votes", "product_hunt_votes", "votes_count"])
-        github_stars_value = first_number(row, ["github_total_stars", "github_stars", "stars"])
-        github_followers_value = first_number(row, ["github_followers", "followers"])
-        github_repos_value = first_number(row, ["github_public_repos", "public_repos", "repo_count"])
-
-        if observations == 0:
-            reasons.append("No verified Product Hunt or GitHub traction metrics are currently stored for this company.")
-        else:
-            if ph_votes_value > 0:
-                reasons.append(f"Product Hunt activity contributes evidence through {ph_votes_value:,.0f} recorded votes.")
-            if github_stars_value > 0:
-                reasons.append(f"Developer interest contributes evidence through {github_stars_value:,.0f} GitHub stars.")
-            if github_followers_value > 0:
-                reasons.append(f"GitHub organization reach includes {github_followers_value:,.0f} followers.")
-            if github_repos_value > 0:
-                reasons.append(f"Open-source activity includes {github_repos_value:,.0f} public repositories.")
-
-        if description and "does not yet have" not in description.lower():
-            reasons.append("A usable company description improved profile completeness and classification confidence.")
-        if classification_method == "VERO text inference":
-            reasons.append("Industry and business-model classifications were inferred from text and are not treated as verified facts.")
-        if confidence < 40:
-            reasons.append("Because the evidence is sparse, the score is pulled toward neutral rather than being allowed to become extremely high or low.")
-
-        for reason in reasons:
-            st.markdown(f"- {reason}")
-
-        if confidence < 35:
-            st.warning(
-                "This is a low-confidence estimate. It should not be used as an investment verdict until VERO has verified traction, customer, funding, team, and financial data."
+        with top[0]:
+            kpi_card(
+                "VERO score",
+                f"{score:.1f}/100",
+                vero.investment_grade,
             )
-        elif confidence < 60:
-            st.info(
-                "This is a preliminary score. More verified company evidence can materially change it."
+
+        with top[1]:
+            kpi_card(
+                "Business quality",
+                (
+                    "Insufficient evidence"
+                    if business_quality_status == "insufficient_evidence"
+                    else f"{profile.overall_business_quality_score:.2f}/10"
+                ),
+                (
+                    f"{profile.business_quality_confidence:.0%} confidence"
+                ),
             )
-        else:
-            st.success(
-                "This score is supported by several stored evidence fields, though it is still not a substitute for diligence."
+
+        with top[2]:
+            kpi_card(
+                "Moat",
+                (
+                    "Insufficient evidence"
+                    if moat_status == "insufficient_evidence"
+                    else f"{profile.overall_moat_score:.2f}/10"
+                ),
+                f"{profile.moat_confidence:.0%} confidence",
             )
+
+        with top[3]:
+            kpi_card(
+                "Risk",
+                (
+                    "Insufficient evidence"
+                    if risk_status == "insufficient_evidence"
+                    else f"{profile.overall_risk_score:.2f}/10"
+                ),
+                f"{profile.risk_confidence:.0%} confidence",
+            )
+
+        left, right = st.columns(2)
+
+        with left:
+            st.markdown("### Likely competitors")
+
+            if profile.competitors:
+                for competitor in profile.competitors[:10]:
+                    st.markdown(f"- {competitor}")
+            else:
+                st.info(
+                    "No likely competitors were identified from the available evidence."
+                )
+
+        with right:
+            st.markdown("### Largest risks")
+
+            if profile.largest_risks:
+                for risk_name in profile.largest_risks:
+                    value = safe_number(
+                        profile.risk_scores.get(
+                            risk_name,
+                            0,
+                        )
+                    )
+                    st.markdown(
+                        f"- **{risk_name.replace('_', ' ').title()}:** "
+                        f"{value:.2f}/10"
+                    )
+            else:
+                st.info(
+                    "No risk category crossed VERO's major-risk threshold."
+                )
+
+    with explanation_tab:
+        components = dict(
+            getattr(
+                vero,
+                "score_components",
+                {},
+            )
+            or {}
+        )
+
+        component_confidence = dict(
+            getattr(
+                vero,
+                "component_confidence",
+                {},
+            )
+            or {}
+        )
+
+        st.markdown("### Why this VERO score was assigned")
+        st.write(
+            f"VERO gives **{company_name}** a score of "
+            f"**{score:.1f}/100 ({vero.investment_grade})** using the "
+            f"same unified scoring pipeline used across Analyze and Compare."
+        )
+
+        maximums = {
+            "business_quality": 30.0,
+            "moat": 25.0,
+            "signals": 15.0,
+            "risk_adjustment": 20.0,
+            "confidence": 10.0,
+        }
+
+        labels = {
+            "business_quality": "Business quality",
+            "moat": "Moat",
+            "signals": "Strategic signals",
+            "risk_adjustment": "Risk adjustment",
+            "confidence": "Evidence confidence",
+        }
+
+        for key, maximum in maximums.items():
+            value = safe_number(
+                components.get(key)
+            )
+            progress_bar(
+                labels[key],
+                value / maximum * 100
+                if maximum
+                else 0,
+            )
+
+            if key == "moat" and moat_status == "insufficient_evidence":
+                explanation = (
+                    "Moat evidence is insufficient, so VERO pulls this component "
+                    "toward neutral instead of treating it as a true zero."
+                )
+            elif key == "business_quality" and business_quality_status == "insufficient_evidence":
+                explanation = (
+                    "Business-quality evidence is limited, so this component is "
+                    "confidence-adjusted toward neutral."
+                )
+            elif key == "risk_adjustment" and risk_status == "insufficient_evidence":
+                explanation = (
+                    "Risk evidence is limited, so VERO avoids assuming the company "
+                    "is either low-risk or high-risk."
+                )
+            else:
+                confidence_key = (
+                    "risk"
+                    if key == "risk_adjustment"
+                    else key
+                )
+                confidence_value = safe_number(
+                    component_confidence.get(
+                        confidence_key,
+                        0,
+                    )
+                )
+                explanation = (
+                    f"{value:.2f}/{maximum:.0f} points"
+                    + (
+                        f" · {confidence_value:.0%} component confidence"
+                        if confidence_value
+                        else ""
+                    )
+                )
+
+            st.caption(explanation)
+
+        decision_left, decision_right = st.columns(2)
+
+        with decision_left:
+            st.markdown("### Strengths")
+            if vero.strengths:
+                for item in vero.strengths:
+                    st.markdown(f"- {item}")
+            else:
+                st.info(
+                    "No strength threshold was triggered by the available evidence."
+                )
+
+        with decision_right:
+            st.markdown("### Concerns")
+            if vero.concerns:
+                for item in vero.concerns:
+                    st.markdown(f"- {item}")
+            else:
+                st.info(
+                    "No concern threshold was triggered by the available evidence."
+                )
+
+        st.caption(
+            f"Evidence mode: {evidence_mode} · "
+            f"{evidence_confidence:.0f}% overall evidence confidence"
+        )
 
     with raw_tab:
-        metadata = {
-            str(key): (None if pd.isna(value) else value)
-            for key, value in row.to_dict().items()
-        }
+        metadata: dict[str, Any] = {}
+
+        for key, value in row.to_dict().items():
+            try:
+                metadata[str(key)] = (
+                    None
+                    if pd.isna(value)
+                    else value
+                )
+            except (TypeError, ValueError):
+                metadata[str(key)] = str(value)
+
         st.json(metadata)
 
 
 def render_leaderboards() -> None:
     page_header(
-        "Ranked discovery",
+        "Leaderboards",
         "Startup leaderboards.",
-        "Discover companies with the strongest Product Hunt, GitHub, YC, and AI-related signals.",
+        "Rank companies using only observed metrics and the cleaned VERO company layer.",
     )
+
+    graph = load_graph_data()
     master = load_master_data()
-    if master.empty:
-        st.warning("No leaderboard database is available.")
+
+    sources = [
+        data
+        for data in [graph, master, yc_data]
+        if not data.empty
+    ]
+
+    if not sources:
+        st.warning("Leaderboard data is unavailable.")
         return
-    leaderboard_type = st.selectbox("Leaderboard", ["Top Product Hunt", "Top GitHub", "Top YC", "Top AI Startups"])
-    if leaderboard_type == "Top Product Hunt":
-        top = master.sort_values("ph_votes", ascending=False).head(50) if "ph_votes" in master.columns else master.head(50)
-        columns = ["name", "source", "ph_votes", "ph_comments", "website_clean"]
-    elif leaderboard_type == "Top GitHub":
-        top = master.sort_values("github_total_stars", ascending=False).head(50) if "github_total_stars" in master.columns else master.head(50)
-        columns = ["name", "github_total_stars", "github_followers", "github_public_repos"]
-    elif leaderboard_type == "Top YC":
-        top = master[master.get("has_yc", False) == True].head(50) if "has_yc" in master.columns else master.head(50)
-        columns = ["name", "industry_clean", "website_clean"]
-    else:
-        descriptions = master.get("description_clean", pd.Series("", index=master.index)).astype(str).str.lower()
-        ai_mask = descriptions.str.contains("artificial intelligence|machine learning|generative ai|\\bllm\\b|\\bgpt\\b", regex=True, na=False)
-        top = master[ai_mask].sort_values("signal_score", ascending=False).head(50) if "signal_score" in master.columns else master[ai_mask].head(50)
-        columns = ["name", "source", "ph_votes", "github_total_stars", "signal_score"]
-    available = [column for column in columns if column in top.columns]
-    st.dataframe(top[available], use_container_width=True, hide_index=True)
+
+    combined = pd.concat(
+        sources,
+        ignore_index=True,
+        sort=False,
+    )
+
+    name_column = next(
+        (
+            column
+            for column in [
+                "name",
+                "company_name",
+                "startup_name",
+                "organization_name",
+            ]
+            if column in combined.columns
+        ),
+        None,
+    )
+
+    if name_column is None:
+        st.warning("No company-name column was found.")
+        return
+
+    combined["_display_name"] = (
+        combined[name_column]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
+
+    combined = combined[
+        combined["_display_name"].map(valid_company_name)
+    ].copy()
+
+    combined["_normalized_name"] = (
+        combined["_display_name"].map(
+            _normalize_company_lookup_name
+        )
+    )
+
+    combined = combined[
+        combined["_normalized_name"].ne("")
+    ].copy()
+
+    malformed = (
+        combined["_display_name"].str.len().gt(90)
+        | combined["_display_name"].str.contains(
+            r"[.!?]\s",
+            regex=True,
+            na=False,
+        )
+    )
+
+    combined = combined.loc[~malformed].copy()
+
+    def quality(row: pd.Series) -> float:
+        score = 0.0
+
+        for field in [
+            "description_clean",
+            "description",
+            "short_description",
+            "long_description",
+            "one_liner",
+            "industry",
+            "industry_clean",
+            "industry_inferred",
+            "business_model_inferred",
+            "source",
+            "website_clean",
+            "website",
+        ]:
+            if field in row.index and clean_text(row.get(field)):
+                score += 1
+
+        for aliases in [
+            ["ph_votes", "product_hunt_votes", "votes_count"],
+            ["github_total_stars", "github_stars", "stars"],
+            ["github_followers", "followers"],
+            ["github_public_repos", "public_repos", "repo_count"],
+            ["signal_score"],
+        ]:
+            if first_number(row, aliases, 0) > 0:
+                score += 1.5
+
+        return score
+
+    best_indexes: list[int] = []
+
+    for _, group in combined.groupby(
+        "_normalized_name",
+        sort=False,
+    ):
+        if group.empty:
+            continue
+
+        best_idx = max(
+            group.index,
+            key=lambda idx: quality(
+                combined.loc[idx]
+            ),
+        )
+        best_indexes.append(best_idx)
+
+    database = combined.loc[best_indexes].copy()
+
+    leaderboard = st.selectbox(
+        "Leaderboard",
+        [
+            "Top VERO Scores",
+            "Top Product Hunt",
+            "Top GitHub",
+            "Top YC Companies",
+            "Top AI Startups",
+        ],
+        key="leaderboard_type",
+    )
+
+    def base_row(row: pd.Series) -> dict[str, Any]:
+        company_name = clean_text(
+            row.get("_display_name"),
+            "Unknown company",
+        )
+
+        industry, _, _ = resolve_row_industry(
+            row,
+            fallback="Insufficient evidence",
+        )
+
+        source = clean_text(
+            first_present(
+                row,
+                [
+                    "source",
+                    "dataset",
+                    "platform",
+                ],
+            ),
+            "VERO database",
+        )
+
+        return {
+            "Company": company_name,
+            "Industry": industry,
+            "Source": source,
+        }
+
+    def score_candidates(
+        candidates: pd.DataFrame,
+        *,
+        limit: int = 25,
+    ) -> pd.DataFrame:
+        records: list[dict[str, Any]] = []
+
+        shortlist = candidates.head(limit).copy()
+
+        for _, row in shortlist.iterrows():
+            info = base_row(row)
+            company_name = info["Company"]
+
+            try:
+                (
+                    profile_dict,
+                    vero_dict,
+                    evidence_confidence,
+                    _mode,
+                    _evidence,
+                ) = get_cached_database_vero_objects(
+                    company_name
+                )
+
+                info["Industry"] = clean_text(
+                    profile_dict.get("industry", {}).get("primary"),
+                    info["Industry"],
+                )
+                info["VERO Score"] = safe_number(
+                    vero_dict.get("overall_score"),
+                    0,
+                )
+                info["Confidence"] = evidence_confidence
+            except Exception:
+                info["VERO Score"] = safe_number(
+                    row.get("signal_score"),
+                    0,
+                )
+                info["Confidence"] = safe_number(
+                    row.get("signal_confidence"),
+                    0,
+                )
+
+            records.append(info)
+
+        frame = pd.DataFrame(records)
+
+        if not frame.empty:
+            frame = frame.sort_values(
+                ["VERO Score", "Confidence"],
+                ascending=[False, False],
+            )
+
+        return frame
+
+    if leaderboard == "Top Product Hunt":
+        database["_ph_votes"] = database.apply(
+            lambda row: first_number(
+                row,
+                [
+                    "ph_votes",
+                    "product_hunt_votes",
+                    "votes_count",
+                    "votes",
+                ],
+                0,
+            ),
+            axis=1,
+        )
+
+        candidates = database[
+            database["_ph_votes"].gt(0)
+        ].copy()
+
+        if candidates.empty:
+            st.info(
+                "VERO does not currently have observed Product Hunt vote data "
+                "for enough companies to build this leaderboard."
+            )
+            return
+
+        candidates = candidates.sort_values(
+            "_ph_votes",
+            ascending=False,
+        ).head(25)
+
+        rows: list[dict[str, Any]] = []
+
+        for _, row in candidates.iterrows():
+            info = base_row(row)
+            info["Product Hunt Votes"] = int(
+                row["_ph_votes"]
+            )
+            rows.append(info)
+
+        view = pd.DataFrame(rows)
+        view.insert(0, "Rank", range(1, len(view) + 1))
+
+        st.dataframe(
+            view,
+            width="stretch",
+            hide_index=True,
+        )
+        return
+
+    if leaderboard == "Top GitHub":
+        database["_github_stars"] = database.apply(
+            lambda row: first_number(
+                row,
+                [
+                    "github_total_stars",
+                    "github_stars",
+                    "stars",
+                ],
+                0,
+            ),
+            axis=1,
+        )
+
+        database["_github_followers"] = database.apply(
+            lambda row: first_number(
+                row,
+                [
+                    "github_followers",
+                    "followers",
+                ],
+                0,
+            ),
+            axis=1,
+        )
+
+        database["_github_repos"] = database.apply(
+            lambda row: first_number(
+                row,
+                [
+                    "github_public_repos",
+                    "public_repos",
+                    "repo_count",
+                ],
+                0,
+            ),
+            axis=1,
+        )
+
+        # GitHub enrichment in older source files can occasionally duplicate
+        # one organization's follower/repository bundle across unrelated rows.
+        # Reject suspicious repeated metric bundles before ranking.
+        observed = database[
+            (
+                database["_github_stars"].gt(0)
+                | database["_github_followers"].gt(0)
+                | database["_github_repos"].gt(0)
+            )
+        ].copy()
+
+        if observed.empty:
+            st.info(
+                "VERO does not currently have observed GitHub metrics for "
+                "enough companies to build a meaningful GitHub leaderboard."
+            )
+            return
+
+        observed["_github_bundle"] = (
+            observed["_github_stars"].astype(str)
+            + "|"
+            + observed["_github_followers"].astype(str)
+            + "|"
+            + observed["_github_repos"].astype(str)
+        )
+
+        bundle_counts = observed["_github_bundle"].value_counts()
+
+        suspicious_bundles = set(
+            bundle_counts[
+                bundle_counts.ge(3)
+            ].index.tolist()
+        )
+
+        if suspicious_bundles:
+            observed = observed[
+                ~observed["_github_bundle"].isin(
+                    suspicious_bundles
+                )
+            ].copy()
+
+        # A row with followers/repositories but zero stars can still be valid,
+        # so we keep it unless it belongs to a suspicious duplicated bundle.
+        if observed.empty:
+            st.info(
+                "VERO found GitHub data, but the available records contain "
+                "duplicated attribution patterns and are not reliable enough "
+                "to rank safely."
+            )
+            return
+
+        observed = observed.sort_values(
+            [
+                "_github_stars",
+                "_github_followers",
+                "_github_repos",
+            ],
+            ascending=False,
+        ).head(25)
+
+        rows: list[dict[str, Any]] = []
+
+        for _, row in observed.iterrows():
+            info = base_row(row)
+            info["GitHub Stars"] = int(
+                row["_github_stars"]
+            )
+            info["GitHub Followers"] = int(
+                row["_github_followers"]
+            )
+            info["Public Repositories"] = int(
+                row["_github_repos"]
+            )
+            rows.append(info)
+
+        view = pd.DataFrame(rows)
+        view.insert(
+            0,
+            "Rank",
+            range(1, len(view) + 1),
+        )
+
+        st.dataframe(
+            view,
+            width="stretch",
+            hide_index=True,
+        )
+
+        if suspicious_bundles:
+            st.caption(
+                "VERO excluded duplicated GitHub metric bundles that appeared "
+                "across multiple unrelated companies."
+            )
+
+        return
+
+    if leaderboard == "Top YC Companies":
+        if yc_data.empty:
+            st.info("YC data is not currently available.")
+            return
+
+        yc_name_col = next(
+            (
+                column
+                for column in [
+                    "name",
+                    "company_name",
+                    "startup_name",
+                ]
+                if column in yc_data.columns
+            ),
+            None,
+        )
+
+        if yc_name_col is None:
+            st.info("YC company names are not available.")
+            return
+
+        yc_names = {
+            _normalize_company_lookup_name(value)
+            for value in (
+                yc_data[yc_name_col]
+                .dropna()
+                .astype(str)
+                .tolist()
+            )
+            if valid_company_name(value)
+        }
+
+        candidates = database[
+            database["_normalized_name"].isin(
+                yc_names
+            )
+        ].copy()
+
+        if candidates.empty:
+            st.info(
+                "No cleaned YC company records are currently available."
+            )
+            return
+
+        candidates["_stored_score"] = pd.to_numeric(
+            candidates.get(
+                "signal_score",
+                pd.Series(
+                    0,
+                    index=candidates.index,
+                ),
+            ),
+            errors="coerce",
+        ).fillna(0)
+
+        candidates = candidates.sort_values(
+            "_stored_score",
+            ascending=False,
+        ).head(30)
+
+        view = score_candidates(
+            candidates,
+            limit=30,
+        ).head(20)
+
+        if view.empty:
+            st.info(
+                "VERO could not score the current YC shortlist."
+            )
+            return
+
+        view.insert(0, "Rank", range(1, len(view) + 1))
+
+        st.dataframe(
+            view[
+                [
+                    "Rank",
+                    "Company",
+                    "Industry",
+                    "VERO Score",
+                    "Confidence",
+                    "Source",
+                ]
+            ],
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "VERO Score": st.column_config.NumberColumn(
+                    "VERO Score",
+                    format="%.1f",
+                ),
+                "Confidence": st.column_config.NumberColumn(
+                    "Confidence",
+                    format="%.0f%%",
+                ),
+            },
+        )
+        return
+
+    if leaderboard == "Top AI Startups":
+        classification_text = _classification_text(
+            database
+        )
+
+        ai_mask = classification_text.str.contains(
+            r"\b(ai|artificial intelligence|machine learning|"
+            r"generative ai|llm|large language model|ai agent|"
+            r"computer vision|natural language processing)\b",
+            regex=True,
+            na=False,
+        )
+
+        candidates = database[
+            ai_mask
+        ].copy()
+
+        if candidates.empty:
+            st.info(
+                "No AI-classified companies are currently available."
+            )
+            return
+
+        candidates["_stored_score"] = pd.to_numeric(
+            candidates.get(
+                "signal_score",
+                pd.Series(
+                    0,
+                    index=candidates.index,
+                ),
+            ),
+            errors="coerce",
+        ).fillna(0)
+
+        candidates = candidates.sort_values(
+            "_stored_score",
+            ascending=False,
+        ).head(30)
+
+        view = score_candidates(
+            candidates,
+            limit=30,
+        ).head(20)
+
+        if view.empty:
+            st.info(
+                "VERO could not score the current AI shortlist."
+            )
+            return
+
+        view.insert(0, "Rank", range(1, len(view) + 1))
+
+        st.dataframe(
+            view[
+                [
+                    "Rank",
+                    "Company",
+                    "Industry",
+                    "VERO Score",
+                    "Confidence",
+                    "Source",
+                ]
+            ],
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "VERO Score": st.column_config.NumberColumn(
+                    "VERO Score",
+                    format="%.1f",
+                ),
+                "Confidence": st.column_config.NumberColumn(
+                    "Confidence",
+                    format="%.0f%%",
+                ),
+            },
+        )
+        return
+
+    # Top VERO Scores
+    database["_stored_score"] = pd.to_numeric(
+        database.get(
+            "signal_score",
+            pd.Series(
+                0,
+                index=database.index,
+            ),
+        ),
+        errors="coerce",
+    ).fillna(0)
+
+    shortlist = database.sort_values(
+        "_stored_score",
+        ascending=False,
+    ).head(35)
+
+    view = score_candidates(
+        shortlist,
+        limit=35,
+    ).head(20)
+
+    if view.empty:
+        st.info(
+            "VERO could not score the current leaderboard shortlist."
+        )
+        return
+
+    view.insert(0, "Rank", range(1, len(view) + 1))
+
+    st.dataframe(
+        view[
+            [
+                "Rank",
+                "Company",
+                "Industry",
+                "VERO Score",
+                "Confidence",
+                "Source",
+            ]
+        ],
+        width="stretch",
+        hide_index=True,
+        column_config={
+            "VERO Score": st.column_config.NumberColumn(
+                "VERO Score",
+                format="%.1f",
+            ),
+            "Confidence": st.column_config.NumberColumn(
+                "Confidence",
+                format="%.0f%%",
+            ),
+        },
+    )
 
 
 def render_model_insights() -> None:
     page_header(
-        "Model transparency",
-        "Understand the scoring model.",
-        "See the model's current performance, dataset balance, and the signals that matter most in its predictions.",
+        "Model insights",
+        "Understand the historical funding model.",
+        "Review the model's validation performance, dataset balance, and the signals that influenced follow-on funding predictions.",
     )
-    success_rate = ((yc_data.get("Raised_Next_Round", pd.Series(dtype=str)) == "Yes").mean() * 100) if not yc_data.empty else 0
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        kpi_card("Cross-validated ROC AUC", "0.79", "Average validation performance")
-    with c2:
-        kpi_card("Standard deviation", "0.019", "Consistency across folds")
-    with c3:
-        kpi_card("Observed success rate", f"{success_rate:.2f}%", "Follow-on rounds in training data")
 
-    section_header("Key findings")
+    st.info(
+        "This page describes VERO's historical machine-learning model for "
+        "follow-on funding outcomes. It is separate from the current VERO "
+        "0–100 intelligence score used across Analyze, Profile, Compare, and Leaderboards."
+    )
+
+    a, b, c = st.columns(3)
+
+    with a:
+        kpi_card(
+            "Cross-validated ROC AUC",
+            "0.79",
+            "Average validation performance",
+        )
+
+    with b:
+        kpi_card(
+            "Standard deviation",
+            "0.019",
+            "Consistency across validation folds",
+        )
+
+    with c:
+        kpi_card(
+            "Observed success rate",
+            "17.98%",
+            "Follow-on rounds in training data",
+        )
+
+    section_header(
+        "What the model predicts",
+        "The historical model estimates patterns associated with whether a startup raises a follow-on funding round.",
+    )
+
+    st.markdown(
+        """
+        The model was trained on historical startup records and learns from the
+        features available in that dataset. It does **not** directly measure
+        company quality, valuation, investment return, or today's VERO score.
+        """
+    )
+
+    section_header(
+        "Key findings",
+        "These are directional findings from the trained model, not percentages or probabilities.",
+    )
+
     findings = [
-        ("YC top-company status", 100, "The strongest observed positive signal."),
-        ("Hiring activity", 82, "A meaningful indicator of company expansion."),
-        ("Enterprise orientation", 62, "Slightly stronger results in the training data."),
-        ("Product Hunt presence", 35, "Useful context, but weaker alone than expected."),
-        ("Basic GitHub presence", 30, "Raw presence matters less than deeper traction."),
+        (
+            "YC top-company status",
+            "One of the strongest positive predictors observed in the trained model. "
+            "Companies carrying this signal were more strongly associated with the "
+            "follow-on funding outcome.",
+        ),
+        (
+            "Hiring activity",
+            "A meaningful positive signal in the training data. Active hiring was "
+            "associated with companies showing expansion or operating momentum.",
+        ),
+        (
+            "Enterprise orientation",
+            "Enterprise-focused companies showed somewhat stronger results in the "
+            "training data, though this signal should be interpreted together with "
+            "industry, age, and other features.",
+        ),
+        (
+            "Product Hunt presence",
+            "Useful context, but weaker on its own than stronger company-quality or "
+            "operating signals. Presence alone should not be treated as proof of traction.",
+        ),
+        (
+            "Basic GitHub presence",
+            "Simple GitHub presence mattered less than deeper traction. Repository activity, "
+            "stars, followers, and other engagement signals are more informative than a "
+            "binary yes/no flag.",
+        ),
     ]
-    st.markdown('<div class="vero-card">', unsafe_allow_html=True)
-    for label, value, note in findings:
-        progress_bar(label, value)
-        st.caption(note)
-    st.markdown('</div>', unsafe_allow_html=True)
 
-    st.info("VERO is a decision-support model, not a guarantee of funding success or investment performance.")
+    for title, explanation in findings:
+        st.markdown(
+            f"""
+            <div class="vero-card" style="margin-bottom:.8rem;">
+                <div style="font-weight:850;font-size:1.05rem;">
+                    {safe_html(title)}
+                </div>
+                <div class="vero-kpi-sub" style="margin-top:.4rem;line-height:1.6;">
+                    {safe_html(explanation)}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    section_header(
+        "How to interpret the statistics",
+        "These metrics describe model discrimination and dataset behavior, not certainty for any one company.",
+    )
+
+    st.markdown(
+        """
+        - **ROC AUC 0.79** means the model showed useful ability to rank positive outcomes above negative ones across validation folds.
+        - **Standard deviation 0.019** means performance was relatively consistent across those folds.
+        - **17.98% observed success rate** is the share of training records labeled with the follow-on funding outcome.
+        - None of these numbers mean VERO is 79% accurate on every company.
+        """
+    )
+
+    st.warning(
+        "Historical model outputs are decision-support signals only. They should "
+        "not be interpreted as a guarantee that a company will raise another round."
+    )
 
 
 def render_about() -> None:
     page_header(
-        "Project story",
+        "About",
         "About VERO.",
-        "VERO is a machine-learning startup intelligence platform built to make fragmented startup data easier to understand.",
+        "VERO is a startup intelligence platform built to turn fragmented company information into structured, explainable analysis.",
     )
-    left, right = st.columns([1.3, 1])
+
+    st.markdown(
+        """
+        <div class="vero-card">
+            <div class="vero-eyebrow">THE MISSION</div>
+            <h3 style="margin-top:.7rem;">
+                Turn scattered startup evidence into a clear, explainable decision-support view.
+            </h3>
+            <p style="line-height:1.75;margin-bottom:0;">
+                VERO combines company descriptions, startup datasets, classifications,
+                traction indicators, and other available evidence. Its intelligence
+                engines evaluate areas such as business quality, moat strength,
+                strategic signals, and risk, then combine those components into an
+                explainable 0–100 VERO Score. When enabled, AI research can gather
+                additional evidence from current public web sources.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="vero-card">
+            <div class="vero-eyebrow">HOW VERO WORKS</div>
+            <p style="line-height:1.75;margin-top:.7rem;margin-bottom:0;">
+                VERO follows a simple pipeline:
+                <strong>Evidence → Classification → Intelligence → Score.</strong>
+                Available company evidence is cleaned and classified before VERO's
+                engines evaluate business quality, moat, strategic signals, risk,
+                and evidence confidence. The final score remains deterministic and
+                explainable rather than being directly chosen by an AI model.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="vero-card">
+            <div class="vero-eyebrow">CURRENT STACK</div>
+            <div style="line-height:2;margin-top:.7rem;">
+                Python and pandas<br>
+                Scikit-learn historical model pipeline<br>
+                Streamlit product interface<br>
+                Unified startup database and company profiles<br>
+                Industry, business-model, moat, signal, risk, and business-quality engines<br>
+                Deterministic VERO scoring pipeline<br>
+                YC, Product Hunt, GitHub, and other available startup signals<br>
+                Optional AI and live-web research<br>
+                Cross-validated historical model evaluation
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="vero-card">
+            <div class="vero-eyebrow">HISTORICAL FUNDING MODEL</div>
+            <p style="line-height:1.75;margin-top:.7rem;margin-bottom:0;">
+                VERO also includes a separate historical machine-learning model used
+                to study patterns associated with whether startups raised a follow-on
+                funding round. Its validation statistics are shown on the Model
+                Insights page. That historical model is not the same thing as the
+                current 0–100 VERO intelligence score.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+
+def render_privacy() -> None:
+    page_header(
+        "Privacy Policy",
+        "VERO Privacy Policy.",
+        "A plain-language explanation of what information VERO may process and how the current application handles it.",
+    )
+
+    st.caption("Last updated: August 21, 2026")
+
+    st.warning(
+        "VERO is currently an early-stage project. This policy should be reviewed "
+        "again before adding production user accounts, payments, analytics, advertising, "
+        "or other services that collect additional personal information."
+    )
+
+    section_header(
+        "1. Information you provide",
+        "VERO processes information that you choose to enter into the application.",
+    )
+    st.markdown(
+        """
+        This can include startup names, company websites, company descriptions,
+        business information, and other evidence entered for analysis. Do not submit
+        passwords, financial account information, government identification numbers,
+        private health information, or other highly sensitive personal information.
+        """
+    )
+
+    section_header(
+        "2. Startup and public-source data",
+        "VERO uses company information from startup datasets and other available sources.",
+    )
+    st.markdown(
+        """
+        VERO may process company descriptions, classifications, Product Hunt activity,
+        GitHub-related signals, YC information, hiring indicators, company age, and
+        other startup evidence available to the application. When optional AI research
+        is used, VERO may also gather relevant information from public web sources.
+        """
+    )
+
+    section_header(
+        "3. AI and external services",
+        "Some optional VERO features may send a research request to an external AI provider.",
+    )
+    st.markdown(
+        """
+        When the **AI + live web research** feature is used, the startup name, website,
+        description, and research instructions needed to perform that request may be
+        sent to the configured AI service. Users should avoid placing confidential or
+        personal information into research fields unless they are authorized to do so.
+
+        VERO's final 0–100 score is produced by its scoring pipeline rather than being
+        directly selected by the AI research model.
+        """
+    )
+
+    section_header(
+        "4. Storage",
+        "The current VERO application primarily works with its startup datasets and the information needed for the active app session.",
+    )
+    st.markdown(
+        """
+        VERO does not intentionally require users to provide sensitive personal data
+        to use its core startup-analysis features. Theme and interface choices may be
+        stored in the current browser/app session.
+
+        If VERO later adds persistent accounts, saved analyses, cloud databases, or
+        other long-term storage, this policy should be updated to explain exactly what
+        is retained and for how long.
+        """
+    )
+
+    section_header(
+        "5. How information is used",
+        "Information processed by VERO is used to provide and improve startup-intelligence features.",
+    )
+    st.markdown(
+        """
+        VERO uses available information to research companies, classify startups,
+        calculate intelligence components, generate VERO Scores, compare companies,
+        populate profiles and leaderboards, troubleshoot the application, and improve
+        the reliability of its analysis.
+        """
+    )
+
+    section_header(
+        "6. Sharing",
+        "VERO does not sell user-submitted personal information.",
+    )
+    st.markdown(
+        """
+        Information may be processed by service providers only when necessary to
+        operate a feature, such as the configured AI provider used for optional
+        research. Public company information may also originate from third-party
+        datasets and websites.
+
+        VERO should not be used to upload information that you do not have permission
+        to share.
+        """
+    )
+
+    section_header(
+        "7. Cookies and analytics",
+        "VERO does not currently use its own advertising or behavioral-tracking system.",
+    )
+    st.markdown(
+        """
+        The hosting platform or other infrastructure used to operate VERO may process
+        basic technical information needed to deliver the application. If VERO later
+        adds analytics, advertising, or additional tracking technologies, this policy
+        should be updated before those systems are treated as part of the product.
+        """
+    )
+
+    section_header(
+        "8. Children and minors",
+        "VERO is a business and startup-analysis tool and is not designed to collect personal information from children.",
+    )
+    st.markdown(
+        """
+        Users should not submit personal information about children through VERO.
+        """
+    )
+
+    section_header(
+        "9. Security",
+        "VERO is designed to limit unnecessary collection of personal information, but no online service can guarantee absolute security.",
+    )
+    st.markdown(
+        """
+        API keys and other private credentials should be stored in protected
+        environment variables or Streamlit secrets and should never be entered into
+        public company-description or research fields.
+        """
+    )
+
+    section_header(
+        "10. Changes to this policy",
+        "This policy may change as VERO's features and infrastructure change.",
+    )
+    st.markdown(
+        """
+        Material additions such as user accounts, saved user data, payments,
+        analytics, or new external services should be reflected in an updated privacy
+        policy.
+        """
+    )
+
+    section_header(
+        "11. Contact",
+        "Questions or privacy requests should be directed to the VERO operator.",
+    )
+    st.markdown(
+        """
+        Before public launch, replace this paragraph with a monitored contact email
+        or other reliable privacy-contact method.
+        """
+    )
+
+
+
+@st.dialog("Terms & Privacy")
+def show_terms_privacy_dialog() -> None:
+    st.markdown(
+        """
+        **Welcome to VERO.** Please review these terms before continuing.
+
+        **VERO is a decision-support tool**
+        - VERO provides startup and private-company research, scoring, comparisons, and analysis.
+        - VERO outputs are informational and are not financial, legal, or investment advice.
+
+        **Information you enter**
+        - Startup names, websites, descriptions, and other evidence may be processed to provide VERO's analysis.
+        - Do not submit passwords, financial account information, government ID numbers, private health information, or other highly sensitive personal information.
+
+        **AI + live web research**
+        - If you use this optional feature, company information and research instructions needed for the request may be sent to the configured AI provider.
+        - The final 0–100 VERO Score is still produced by VERO's scoring pipeline rather than being directly chosen by the AI model.
+
+        **Public and third-party information**
+        - VERO may use startup datasets and public-source company information.
+        - Third-party information can be incomplete or inaccurate.
+
+        **No guarantee**
+        - VERO does not guarantee funding, business success, investment returns, or any specific company outcome.
+
+        By continuing, you agree to these Terms and acknowledge the Privacy Policy.
+        """
+    )
+
+    agreed = st.checkbox(
+        "I agree to the Terms and acknowledge the Privacy Policy.",
+        key="terms_agree_checkbox",
+    )
+
+    left, right = st.columns(2)
+
     with left:
-        st.markdown(
-            """
-            <div class="vero-card">
-                <div class="vero-kpi-label">The mission</div>
-                <div style="font-size:1.35rem;font-weight:820;margin:.65rem 0;">Turn scattered startup evidence into a clear, explainable view.</div>
-                <div class="vero-kpi-sub" style="line-height:1.75;">
-                    VERO combines YC metadata, Product Hunt activity, GitHub enrichment, natural-language signals, hiring indicators, and company age. Its current model estimates whether a startup is likely to raise a follow-on funding round.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        if st.button(
+            "View Privacy Policy",
+            width="stretch",
+            key="terms_view_privacy",
+        ):
+            st.session_state.terms_accepted = True
+            st.session_state["pending_page"] = "Privacy Policy"
+            st.rerun()
+
     with right:
-        st.markdown(
-            """
-            <div class="vero-card">
-                <div class="vero-kpi-label">Current stack</div>
-                <div style="line-height:1.9;margin-top:.55rem;">
-                    Python and pandas<br>
-                    Scikit-learn model pipeline<br>
-                    Streamlit product interface<br>
-                    YC, Product Hunt, and GitHub signals<br>
-                    Cross-validated evaluation
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        if st.button(
+            "Accept and continue",
+            width="stretch",
+            type="primary",
+            disabled=not agreed,
+            key="terms_accept_button",
+        ):
+            st.session_state.terms_accepted = True
+            st.rerun()
 
 
 def render_settings() -> None:
@@ -2363,7 +6166,11 @@ PAGES = {
     "Leaderboards": render_leaderboards,
     "Model Insights": render_model_insights,
     "About": render_about,
+    "Privacy Policy": render_privacy,
     "Settings": render_settings,
 }
+
+if not st.session_state.get("terms_accepted", False):
+    show_terms_privacy_dialog()
 
 PAGES[page]()

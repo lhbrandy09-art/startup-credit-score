@@ -512,6 +512,47 @@ def _resolve_industry(
     return str(ontology["name"])
 
 
+
+def _split_evidence_sections(text: str) -> tuple[str, str]:
+    """Separate direct/source evidence from VERO-inferred structural evidence.
+
+    Compare-page enrichment appends a section beginning with
+    "Structural evidence:". Terms found only in that section should help the
+    engine reason about likely moat structure, but should not be treated as
+    verified proof at full strength.
+    """
+    marker = "structural evidence:"
+    lowered = text.casefold()
+
+    marker_index = lowered.find(marker)
+
+    if marker_index == -1:
+        return text, ""
+
+    direct_text = text[:marker_index]
+    inferred_text = text[marker_index + len(marker):]
+
+    return direct_text, inferred_text
+
+
+def _evidence_strength(
+    direct_normalized: str,
+    inferred_normalized: str,
+    term: str,
+) -> tuple[float, str | None]:
+    """Return the weight multiplier and provenance for one matched term."""
+    if _contains_term(direct_normalized, term):
+        return 1.0, "direct"
+
+    if inferred_normalized and _contains_term(
+        inferred_normalized,
+        term,
+    ):
+        # Structural inference is intentionally much weaker than direct proof.
+        return 0.32, "inferred"
+
+    return 0.0, None
+
 def analyze_moats(
     text: str,
     industry_name: str | None = None,
@@ -520,7 +561,11 @@ def analyze_moats(
     """
     Estimate a startup's competitive moats from free text.
 
-    Scores are normalized from 0 to 10. Missing evidence produces
+    Direct/source evidence receives full weight.
+    VERO-inferred structural evidence receives partial weight and cannot,
+    by itself, produce a near-perfect moat score.
+
+    Scores remain normalized from 0 to 10. Missing evidence produces
     a score of zero rather than assuming that a moat does not exist.
     """
 
@@ -542,6 +587,11 @@ def analyze_moats(
             confidence=0.0,
         )
 
+    direct_text, inferred_text = _split_evidence_sections(text)
+
+    direct_normalized = _normalize_text(direct_text)
+    inferred_normalized = _normalize_text(inferred_text)
+
     primary_industry = _resolve_industry(
         text=text,
         industry_name=industry_name,
@@ -555,12 +605,20 @@ def analyze_moats(
     moat_scores: dict[str, float] = {}
     evidence: dict[str, list[str]] = {}
 
+    # Track provenance separately so confidence and caps can distinguish
+    # verified evidence from structural inference.
+    direct_match_counts: dict[str, int] = {}
+    inferred_match_counts: dict[str, int] = {}
+
     for moat_name, patterns in MOAT_PATTERNS.items():
         matched_terms: list[str] = []
         seen: set[str] = set()
-        raw_score = 0.0
 
-        # Longer phrases are checked first.
+        direct_raw = 0.0
+        inferred_raw = 0.0
+        direct_count = 0
+        inferred_count = 0
+
         sorted_patterns = sorted(
             patterns,
             key=lambda value: len(_normalize_text(value)),
@@ -571,22 +629,50 @@ def analyze_moats(
             normalized_pattern = _normalize_text(pattern)
 
             if (
-                normalized_pattern
-                and normalized_pattern not in seen
-                and _contains_term(
-                    normalized_text,
-                    normalized_pattern,
-                )
+                not normalized_pattern
+                or normalized_pattern in seen
             ):
-                seen.add(normalized_pattern)
-                matched_terms.append(pattern)
-                raw_score += _term_weight(pattern)
+                continue
 
-        if len(matched_terms) >= 2:
-            raw_score += min(
-                1.5,
-                (len(matched_terms) - 1) * 0.35,
+            strength, provenance = _evidence_strength(
+                direct_normalized=direct_normalized,
+                inferred_normalized=inferred_normalized,
+                term=normalized_pattern,
             )
+
+            if provenance is None:
+                continue
+
+            seen.add(normalized_pattern)
+
+            base_weight = _term_weight(pattern)
+
+            if provenance == "direct":
+                direct_count += 1
+                direct_raw += base_weight
+                matched_terms.append(pattern)
+            else:
+                inferred_count += 1
+                inferred_raw += base_weight * strength
+                matched_terms.append(
+                    f"{pattern} [inferred]"
+                )
+
+        # Synergy should mostly reward multiple direct observations.
+        if direct_count >= 2:
+            direct_raw += min(
+                1.25,
+                (direct_count - 1) * 0.25,
+            )
+
+        # Inferred-only breadth can help, but only slightly.
+        if inferred_count >= 2:
+            inferred_raw += min(
+                0.45,
+                (inferred_count - 1) * 0.08,
+            )
+
+        raw_score = direct_raw + inferred_raw
 
         industry_multiplier = industry_weights.get(
             moat_name,
@@ -595,11 +681,29 @@ def analyze_moats(
 
         weighted_score = raw_score * industry_multiplier
 
-        # This normalization rises quickly at first but becomes harder
-        # to max out from repeated keyword matches.
+        # Gentler normalization than the previous 0.85 multiplier.
+        # Direct evidence can still reach very high scores, but it now
+        # requires substantial, specific support.
+        normalized_score = weighted_score * 0.68
+
+        # Structural inference alone must never imply an elite moat.
+        if direct_count == 0 and inferred_count > 0:
+            normalized_score = min(
+                normalized_score,
+                5.25,
+            )
+
+        # One direct phrase plus inferred structure is still not enough
+        # for a near-perfect category score.
+        elif direct_count == 1:
+            normalized_score = min(
+                normalized_score,
+                7.0,
+            )
+
         normalized_score = min(
             10.0,
-            weighted_score * 0.85,
+            normalized_score,
         )
 
         if normalized_score >= minimum_score:
@@ -608,6 +712,8 @@ def analyze_moats(
                 2,
             )
             evidence[moat_name] = matched_terms
+            direct_match_counts[moat_name] = direct_count
+            inferred_match_counts[moat_name] = inferred_count
 
     if not moat_scores:
         return MoatPrediction(
@@ -639,17 +745,36 @@ def analyze_moats(
 
     active_scores = list(moat_scores.values())
 
-    # Strong moats matter more than a plain average, while still
-    # rewarding companies that have several defensibility layers.
+    # Overall moat should reward depth plus breadth, but not let one
+    # inferred category dominate the whole company score.
     top_three = sorted(
         active_scores,
         reverse=True,
     )[:3]
 
-    top_three_average = sum(top_three) / len(top_three)
+    top_three_average = (
+        sum(top_three) / len(top_three)
+    )
+
+    direct_categories = sum(
+        1
+        for moat_name in moat_scores
+        if direct_match_counts.get(moat_name, 0) > 0
+    )
+
+    inferred_only_categories = sum(
+        1
+        for moat_name in moat_scores
+        if (
+            direct_match_counts.get(moat_name, 0) == 0
+            and inferred_match_counts.get(moat_name, 0) > 0
+        )
+    )
+
     breadth_bonus = min(
-        1.5,
-        max(0, len(active_scores) - 1) * 0.25,
+        0.9,
+        max(0, direct_categories - 1) * 0.22
+        + inferred_only_categories * 0.06,
     )
 
     overall_moat_score = min(
@@ -657,14 +782,26 @@ def analyze_moats(
         top_three_average + breadth_bonus,
     )
 
-    total_matches = sum(
-        len(values)
-        for values in evidence.values()
+    total_direct_matches = sum(
+        direct_match_counts.values()
+    )
+    total_inferred_matches = sum(
+        inferred_match_counts.values()
     )
 
-    evidence_coverage = min(
+    # Confidence is driven primarily by direct evidence.
+    direct_coverage = min(
         1.0,
-        total_matches / 10,
+        total_direct_matches / 8,
+    )
+    inferred_coverage = min(
+        1.0,
+        total_inferred_matches / 10,
+    )
+
+    category_coverage = min(
+        1.0,
+        direct_categories / 4,
     )
 
     score_margin = (
@@ -673,16 +810,32 @@ def analyze_moats(
         else 0.0
     )
 
-    category_coverage = min(
-        1.0,
-        len(moat_scores) / 4,
+    confidence = (
+        direct_coverage * 0.55
+        + category_coverage * 0.25
+        + score_margin * 0.10
+        + inferred_coverage * 0.10
     )
 
-    confidence = (
-        evidence_coverage * 0.50
-        + category_coverage * 0.30
-        + score_margin * 0.20
-    )
+    # If everything came from inference, cap confidence sharply.
+    if total_direct_matches == 0:
+        confidence = min(
+            confidence,
+            0.38,
+        )
+
+        # Also prevent an inferred-only company from receiving an
+        # overall moat score that looks like verified dominance.
+        overall_moat_score = min(
+            overall_moat_score,
+            5.5,
+        )
+
+    elif total_direct_matches <= 2:
+        confidence = min(
+            confidence,
+            0.62,
+        )
 
     return MoatPrediction(
         primary_industry=primary_industry,
@@ -696,7 +849,10 @@ def analyze_moats(
             overall_moat_score,
             2,
         ),
-        confidence=round(confidence, 3),
+        confidence=round(
+            max(0.0, min(1.0, confidence)),
+            3,
+        ),
     )
 
 
